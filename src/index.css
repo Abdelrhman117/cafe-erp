@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: 'Cairo', Arial, sans-serif;
+    direction: rtl;
+  }
+
+  /* Hide number input spinners */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] { -moz-appearance: textfield; }
+}
+
+@layer utilities {
+  /* Scrollbar */
+  .custom-scrollbar::-webkit-scrollbar       { width: 5px; height: 5px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
+
+  /* Hide scrollbar */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+/* Print */
+@media print {
+  body * { visibility: hidden; }
+  .print-section,
+  .print-section * { visibility: visible; }
+  .print-section { position: absolute; left: 0; top: 0; width: 100%; }
+  .no-print { display: none !important; }
+}
