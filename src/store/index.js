@@ -82,41 +82,47 @@ export const useStore = create((set, get) => ({
     isTaxEnabled: false
   }),
 
-  // ── Sync — debounced + instant first call ────────────────
-  // يحفظ فوراً، ولو جاء request ثاني خلال 300ms يدمجهم معاً
-  _syncTimer:   null,
-  _syncBuffer:  {},
+  // ── Sync — debounced 300ms ────────────────────────────────
+  _syncTimer:  null,
+  _syncBuffer: {},
 
   sync: (partial) => {
     const { currentUser } = get()
     if (!currentUser?.cafeId) return
 
     const cafeId = currentUser.cafeId
+    set(s => ({ _syncBuffer: { ...s._syncBuffer, ...partial }, syncStatus: 'saving' }))
 
-    // دمج الـ partial الجديد في الـ buffer
-    set(s => ({ _syncBuffer: { ...s._syncBuffer, ...partial } }))
-    set({ syncStatus: 'saving' })
-
-    // إلغاء الـ timer السابق لو موجود (debounce)
     if (get()._syncTimer) clearTimeout(get()._syncTimer)
 
     const timer = setTimeout(async () => {
       const buffer = get()._syncBuffer
       if (!Object.keys(buffer).length) return
-
-      // امسح الـ buffer قبل الإرسال عشان أي تغييرات جديدة تتجمع من جديد
       set({ _syncBuffer: {}, _syncTimer: null })
 
-      try {
+      // محاولة مع retry مرة واحدة
+      const doSave = async () => {
         await saveCafe(cafeId, buffer)
+      }
+
+      try {
+        await doSave()
         set({ syncStatus: 'saved' })
         setTimeout(() => set(s => s.syncStatus === 'saved' ? { syncStatus: 'idle' } : {}), 2000)
-      } catch (e) {
-        // عند الفشل: ارجع الـ buffer + علّم بالخطأ
-        set(s => ({ syncStatus: 'error', _syncBuffer: { ...buffer, ...s._syncBuffer } }))
-        console.error('Sync error:', e)
+      } catch (e1) {
+        // retry بعد ثانية واحدة
+        setTimeout(async () => {
+          try {
+            await doSave()
+            set({ syncStatus: 'saved' })
+            setTimeout(() => set(s => s.syncStatus === 'saved' ? { syncStatus: 'idle' } : {}), 2000)
+          } catch (e2) {
+            console.error('Sync failed:', e2.code, e2.message)
+            set(s => ({ syncStatus: 'error', _syncBuffer: { ...buffer, ...s._syncBuffer } }))
+          }
+        }, 1000)
       }
-    }, 300) // 300ms debounce — سريع جداً للمستخدم ومش بيحمّل Firebase
+    }, 300)
 
     set({ _syncTimer: timer })
   },

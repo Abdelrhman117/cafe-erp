@@ -18,7 +18,7 @@ export default function StatusBar({ onNavigate }) {
 
   const statusText =
     !isOnline         ? '📵 أوفلاين — سيتم الرفع تلقائياً عند الاتصال' :
-    syncStatus === 'error'  ? '❌ فشل الحفظ — سيتم إعادة المحاولة' :
+    syncStatus === 'error'  ? '❌ فشل الحفظ — افتح Console (F12) لمعرفة السبب' :
     syncStatus === 'saving' ? 'جاري الحفظ...' :
     syncStatus === 'saved'  ? '✅ تم الحفظ' :
     hasPending              ? '⏳ تغييرات معلقة...' :

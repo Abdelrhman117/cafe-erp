@@ -8,22 +8,11 @@ const firebaseConfig = {
   measurementId:     "G-0594R4YVX4"
 }
 
-import { initializeApp }  from 'firebase/app'
-import { getAuth }        from 'firebase/auth'
-import {
-  initializeFirestore,
-  persistentLocalCache,
-  persistentSingleTabManager
-} from 'firebase/firestore'
+import { initializeApp } from 'firebase/app'
+import { getAuth }       from 'firebase/auth'
+import { getFirestore }  from 'firebase/firestore'
 
 const app         = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
-
-// persistentSingleTabManager — أكثر استقراراً من MultipleTab في بيئة الإنتاج
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentSingleTabManager({ forceOwnership: true })
-  })
-})
-
+export const db   = getFirestore(app)
 export default app
