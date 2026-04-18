@@ -102,11 +102,32 @@ export function useFirestore() {
     if (!currentUser?.cafeId) return
     const unsub = subscribeCafe(
       currentUser.cafeId,
-      (snap) => {
-        if (snap.exists()) setCafeData(snap.data())
-        if (snap.metadata?.hasPendingWrites) setSyncStatus('saving')
+      async (snap) => {
+        if (snap.exists()) {
+          setCafeData(snap.data())
+          if (snap.metadata?.hasPendingWrites) setSyncStatus('saving')
+          else setSyncStatus('idle')
+        } else {
+          // Document doesn't exist yet — create it with current store data
+          const { products, rawMaterials, employees, expenses, tables,
+                  shifts, orders, activeTableOrders, offers, psDevices,
+                  psSessions, isTaxEnabled } = useStore.getState()
+          const { saveCafe } = await import('../lib/firestore')
+          try {
+            await saveCafe(currentUser.cafeId, {
+              products, rawMaterials, employees, expenses, tables,
+              shifts, orders, activeTableOrders, offers, psDevices,
+              psSessions, isTaxEnabled
+            })
+          } catch (e) {
+            console.error('Failed to initialize cafe document:', e)
+          }
+        }
       },
-      (err) => console.error('Cafe subscription error:', err)
+      (err) => {
+        console.error('Cafe subscription error:', err)
+        setSyncStatus('error')
+      }
     )
     return unsub
   }, [currentUser?.cafeId])

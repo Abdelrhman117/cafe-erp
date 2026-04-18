@@ -1,11 +1,3 @@
-// ==========================================
-// 🔧 ضع هنا بيانات Firebase الخاصة بك
-// ==========================================
-// 1. اذهب إلى https://console.firebase.google.com
-// 2. أنشئ مشروع جديد أو استخدم مشروع موجود
-// 3. Project Settings → Your apps → Web app
-// 4. انسخ firebaseConfig والصقها هنا
-
 const firebaseConfig = {
   apiKey:            "AIzaSyC_h5f_fpqVsrqe_nEexbKPAQnRQNw4ZCU",
   authDomain:        "zerolets-3dcbf.firebaseapp.com",
@@ -16,19 +8,22 @@ const firebaseConfig = {
   measurementId:     "G-0594R4YVX4"
 }
 
-// ==========================================
-// Firebase Services — لا تعدّل هنا
-// ==========================================
-import { initializeApp }     from 'firebase/app'
-import { getAuth }           from 'firebase/auth'
-import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore'
+import { initializeApp }  from 'firebase/app'
+import { getAuth }        from 'firebase/auth'
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentSingleTabManager
+} from 'firebase/firestore'
 
-const app  = initializeApp(firebaseConfig)
+const app         = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 
-// Offline persistence (Firebase v9.19+)
+// persistentSingleTabManager — أكثر استقراراً من MultipleTab في بيئة الإنتاج
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  localCache: persistentLocalCache({
+    tabManager: persistentSingleTabManager({ forceOwnership: true })
+  })
 })
 
 export default app
