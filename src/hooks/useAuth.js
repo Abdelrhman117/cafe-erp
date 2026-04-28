@@ -11,13 +11,16 @@ async function hashPassword(password) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('')
 }
 
-// ─── Rate limiter: 5 attempts / 60s ──────────────────────
-const _attempts = {}
+// ─── Rate limiter: 5 attempts / 60s — persisted in sessionStorage ────
 function checkRateLimit(key) {
+  const storageKey = `erp_rl_${key}`
   const now = Date.now()
-  _attempts[key] = (_attempts[key] || []).filter(t => now - t < 60_000)
-  if (_attempts[key].length >= 5) return false
-  _attempts[key].push(now)
+  let attempts = []
+  try { attempts = JSON.parse(sessionStorage.getItem(storageKey) || '[]') } catch {}
+  attempts = attempts.filter(t => now - t < 60_000)
+  if (attempts.length >= 5) return false
+  attempts.push(now)
+  try { sessionStorage.setItem(storageKey, JSON.stringify(attempts)) } catch {}
   return true
 }
 
