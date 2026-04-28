@@ -94,23 +94,6 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Hint */}
-        <div className="mt-5 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-700">
-          <p className="text-xs font-black text-slate-500 dark:text-slate-400 mb-2">📧 تسجيل الدخول:</p>
-          {(platform?.tenants || []).map(t => (
-            <div key={t.id} className="mb-1.5">
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 font-bold">
-                {t.name} — مدير:&nbsp;
-                <span className="text-indigo-500" dir="ltr">{t.adminEmail}</span>
-              </p>
-              {(t.cashiers || []).length > 0 && (
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 font-bold mt-0.5">
-                  الكاشيرية: {(t.cashiers || []).map(c => c.email).join(' / ')}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   )

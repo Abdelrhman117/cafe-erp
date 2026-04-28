@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Menu, LogOut, Moon, Sun, Power } from 'lucide-react'
+import { useState, useEffect, lazy, Suspense } from 'react'
+import { Menu, LogOut, Moon, Sun, Power, Loader2 } from 'lucide-react'
 import { useStore } from './store'
 import { useFirestore } from './hooks/useFirestore'
 import { useAuth } from './hooks/useAuth'
@@ -7,22 +7,28 @@ import { useAuth } from './hooks/useAuth'
 import StatusBar        from './components/StatusBar'
 import Sidebar          from './components/Sidebar'
 import InstallBanner    from './components/InstallBanner'
-
 import LoginPage        from './pages/LoginPage'
-import CustomerMenuPage  from './pages/CustomerMenuPage'
-import DashboardPage    from './pages/DashboardPage'
-import POSPage          from './pages/POSPage'
-import ReportsPage      from './pages/ReportsPage'
-import ShiftsPage       from './pages/ShiftsPage'
-import InventoryPage    from './pages/InventoryPage'
-import ProductsPage     from './pages/ProductsPage'
-import OffersPage       from './pages/OffersPage'
-import TablesPage       from './pages/TablesPage'
-import PlayStationPage  from './pages/PlayStationPage'
-import HRPage           from './pages/HRPage'
-import ExpensesPage     from './pages/ExpensesPage'
-import SuperAdminPage   from './pages/SuperAdminPage'
-import SettingsPage     from './pages/SettingsPage'
+
+const CustomerMenuPage  = lazy(() => import('./pages/CustomerMenuPage'))
+const DashboardPage     = lazy(() => import('./pages/DashboardPage'))
+const POSPage           = lazy(() => import('./pages/POSPage'))
+const ReportsPage       = lazy(() => import('./pages/ReportsPage'))
+const ShiftsPage        = lazy(() => import('./pages/ShiftsPage'))
+const InventoryPage     = lazy(() => import('./pages/InventoryPage'))
+const ProductsPage      = lazy(() => import('./pages/ProductsPage'))
+const OffersPage        = lazy(() => import('./pages/OffersPage'))
+const TablesPage        = lazy(() => import('./pages/TablesPage'))
+const PlayStationPage   = lazy(() => import('./pages/PlayStationPage'))
+const HRPage            = lazy(() => import('./pages/HRPage'))
+const ExpensesPage      = lazy(() => import('./pages/ExpensesPage'))
+const SuperAdminPage    = lazy(() => import('./pages/SuperAdminPage'))
+const SettingsPage      = lazy(() => import('./pages/SettingsPage'))
+
+const PageLoader = () => (
+  <div className="flex-1 flex items-center justify-center">
+    <Loader2 size={32} className="animate-spin text-indigo-500" />
+  </div>
+)
 
 export default function App() {
   const { currentUser, isDarkMode, setIsDarkMode, platform } = useStore()
@@ -60,7 +66,9 @@ export default function App() {
   if (currentUser.role === 'customer') return (
     <div className="pt-7">
       <StatusBar />
-      <CustomerMenuPage />
+      <Suspense fallback={<PageLoader />}>
+        <CustomerMenuPage />
+      </Suspense>
     </div>
   )
 
@@ -69,7 +77,9 @@ export default function App() {
     return (
       <div className="pt-7">
         <StatusBar />
-        <ShiftsPage />
+        <Suspense fallback={<PageLoader />}>
+          <ShiftsPage />
+        </Suspense>
       </div>
     )
   }
@@ -167,7 +177,9 @@ export default function App() {
 
         {/* Page content */}
         <div className="flex-1 overflow-auto custom-scrollbar">
-          {renderPage()}
+          <Suspense fallback={<PageLoader />}>
+            {renderPage()}
+          </Suspense>
         </div>
       </main>
     </div>

@@ -1,0 +1,39 @@
+name: Deploy to Firebase Hosting
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_FIREBASE_API_KEY: AIzaSyC_h5f_fpqVsrqe_nEexbKPAQnRQNw4ZCU
+          VITE_FIREBASE_AUTH_DOMAIN: zerolets-3dcbf.firebaseapp.com
+          VITE_FIREBASE_PROJECT_ID: zerolets-3dcbf
+          VITE_FIREBASE_STORAGE_BUCKET: zerolets-3dcbf.firebasestorage.app
+          VITE_FIREBASE_MESSAGING_SENDER_ID: "855856820755"
+          VITE_FIREBASE_APP_ID: 1:855856820755:web:7cc84ae5fe485f78c285e6
+          VITE_FIREBASE_MEASUREMENT_ID: G-0594R4YVX4
+          VITE_OWNER_EMAIL: owner@coffeeerp.app
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: zerolets-3dcbf

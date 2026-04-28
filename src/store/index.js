@@ -25,12 +25,12 @@ export const useStore = create((set, get) => ({
 
   // ── Auth / Session ──────────────────────────────────────
   currentUser: null,      // { uid, email, role, cafeId, cafeName, displayName }
-  isDarkMode: false,
+  isDarkMode: localStorage.getItem('erp_darkMode') === 'true',
   isOnline: true,
   syncStatus: 'idle',     // idle | saving | saved | error
 
   setCurrentUser:  (u)  => set({ currentUser: u }),
-  setIsDarkMode:   (v)  => set({ isDarkMode: v }),
+  setIsDarkMode:   (v)  => { localStorage.setItem('erp_darkMode', v); set({ isDarkMode: v }) },
   setIsOnline:     (v)  => set({ isOnline: v }),
   setSyncStatus:   (v)  => set({ syncStatus: v }),
 
@@ -132,7 +132,7 @@ export const useStore = create((set, get) => ({
     const list = get().products
     const next = product.id
       ? list.map(p => p.id === product.id ? { ...p, ...product } : p)
-      : [...list, { ...product, id: `p_${Date.now()}` }]
+      : [...list, { ...product, id: crypto.randomUUID() }]
     set({ products: next })
     get().sync({ products: next })
   },
@@ -147,7 +147,7 @@ export const useStore = create((set, get) => ({
     const list = get().rawMaterials
     const next = mat.id
       ? list.map(m => m.id === mat.id ? { ...m, ...mat } : m)
-      : [...list, { ...mat, id: `rm_${Date.now()}` }]
+      : [...list, { ...mat, id: crypto.randomUUID() }]
     set({ rawMaterials: next })
     get().sync({ rawMaterials: next })
   },
@@ -162,7 +162,7 @@ export const useStore = create((set, get) => ({
     const list = get().employees
     const next = emp.id
       ? list.map(e => e.id === emp.id ? { ...e, ...emp } : e)
-      : [...list, { ...emp, id: `emp_${Date.now()}`, advances: 0, deductions: 0 }]
+      : [...list, { ...emp, id: crypto.randomUUID(), advances: 0, deductions: 0 }]
     set({ employees: next })
     get().sync({ employees: next })
   },
@@ -174,7 +174,7 @@ export const useStore = create((set, get) => ({
 
   // ── Expenses ─────────────────────────────────────────────
   addExpense: (exp) => {
-    const next = [...get().expenses, { ...exp, id: `ex_${Date.now()}`, date: new Date().toISOString().split('T')[0] }]
+    const next = [...get().expenses, { ...exp, id: crypto.randomUUID(), date: new Date().toISOString().split('T')[0] }]
     set({ expenses: next })
     get().sync({ expenses: next })
   },
@@ -189,7 +189,7 @@ export const useStore = create((set, get) => ({
     const list = get().tables
     const next = table.id
       ? list.map(t => t.id === table.id ? { ...t, ...table } : t)
-      : [...list, { ...table, id: `tbl_${Date.now()}` }]
+      : [...list, { ...table, id: crypto.randomUUID() }]
     set({ tables: next })
     get().sync({ tables: next })
   },
@@ -204,7 +204,7 @@ export const useStore = create((set, get) => ({
     const list = get().offers
     const next = offer.id
       ? list.map(o => o.id === offer.id ? { ...o, ...offer } : o)
-      : [...list, { ...offer, id: `off_${Date.now()}`, isActive: true }]
+      : [...list, { ...offer, id: crypto.randomUUID(), isActive: true }]
     set({ offers: next })
     get().sync({ offers: next })
   },
@@ -223,7 +223,7 @@ export const useStore = create((set, get) => ({
 
   // ── Shifts ────────────────────────────────────────────────
   openShift: (cashierName, startingCash) => {
-    const shift = { id: `sh_${Date.now()}`, cashierName, startingCash, startTime: new Date().toLocaleString('ar-EG'), timestamp: Date.now(), status: 'open' }
+    const shift = { id: crypto.randomUUID(), cashierName, startingCash, startTime: new Date().toLocaleString('ar-EG'), timestamp: Date.now(), status: 'open' }
     const next  = [...get().shifts, shift]
     set({ shifts: next })
     get().sync({ shifts: next })
@@ -258,19 +258,25 @@ export const useStore = create((set, get) => ({
     const tax   = isTaxEnabled ? afterDiscount * TAX_RATE : 0
     const total = afterDiscount + tax
 
-    // خصم من المخزون
+    // خصم من المخزون + تجميع تحذيرات النفاد
     const newMaterials = rawMaterials.map(rm => ({ ...rm }))
+    const lowStockWarnings = []
     cart.forEach(ci => {
       const prod = products.find(p => p.id === ci.id)
       if (!prod?.recipe) return
       prod.recipe.forEach(r => {
         const idx = newMaterials.findIndex(m => m.id === r.materialId)
-        if (idx !== -1) newMaterials[idx].currentStock -= r.amount * ci.quantity
+        if (idx !== -1) {
+          newMaterials[idx].currentStock -= r.amount * ci.quantity
+          if (newMaterials[idx].currentStock < 0) {
+            lowStockWarnings.push(newMaterials[idx].name)
+          }
+        }
       })
     })
 
     const order = {
-      id: `ord_${Date.now()}`,
+      id: crypto.randomUUID(),
       items: cart, subtotal, discountAmount, discountType, discountValue,
       tax, total, shiftId, cashierName,
       note: orderType === 'takeaway' ? 'تيك أواي' : `صالة — ${tableName}`,
@@ -284,13 +290,13 @@ export const useStore = create((set, get) => ({
 
     set({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO })
     get().sync({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO })
-    return order
+    return { ...order, lowStockWarnings }
   },
 
-  holdTable: async (tableId, cart) => {
+  holdTable: (tableId, cart) => {
     const next = { ...get().activeTableOrders, [tableId]: cart }
     set({ activeTableOrders: next })
-    await get().sync({ activeTableOrders: next })
+    get().sync({ activeTableOrders: next })
   },
 
   // ── PlayStation ───────────────────────────────────────────
@@ -298,7 +304,7 @@ export const useStore = create((set, get) => ({
     const list = get().psDevices
     const next = device.id
       ? list.map(d => d.id === device.id ? { ...d, ...device } : d)
-      : [...list, { ...device, id: `ps_${Date.now()}` }]
+      : [...list, { ...device, id: crypto.randomUUID() }]
     set({ psDevices: next })
     get().sync({ psDevices: next })
   },
@@ -309,7 +315,7 @@ export const useStore = create((set, get) => ({
   },
   startPsSession: (deviceId, cashierName) => {
     const device  = get().psDevices.find(d => d.id === deviceId)
-    const session = { id: `pss_${Date.now()}`, deviceId, deviceName: device?.name || '', startTime: Date.now(), startTimeStr: new Date().toLocaleString('ar-EG'), status: 'active', cashierName }
+    const session = { id: crypto.randomUUID(), deviceId, deviceName: device?.name || '', startTime: Date.now(), startTimeStr: new Date().toLocaleString('ar-EG'), status: 'active', cashierName }
     const next    = [...get().psSessions, session]
     set({ psSessions: next })
     get().sync({ psSessions: next })
@@ -342,7 +348,7 @@ export const useStore = create((set, get) => ({
     let newOrders = orders
     if (cost > 0) {
       const psOrder = {
-        id: `ord_${Date.now()}`,
+        id: crypto.randomUUID(),
         items: [{
           id:       sessionId,
           name:     `${device.name} — ${durationMin} دقيقة (محسوب: ${billedMin} دقيقة)`,
