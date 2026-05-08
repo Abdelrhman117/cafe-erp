@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { saveCafe, savePlatform } from '../lib/firestore'
+import { saveLocal } from '../lib/localCache'
 import { RAW_MATERIALS as SEED_MATERIALS, PRODUCTS as SEED_PRODUCTS } from '../lib/seed'
 
 // ─── Default data (من ريسيبي let's Café) ──────────────────
@@ -99,6 +100,15 @@ export const useStore = create((set, get) => ({
       const buffer = get()._syncBuffer
       if (!Object.keys(buffer).length) return
       set({ _syncBuffer: {}, _syncTimer: null })
+
+      // حفظ فوري في localStorage (يشتغل حتى أوفلاين)
+      const s = get()
+      saveLocal(cafeId, {
+        products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
+        expenses: s.expenses, tables: s.tables, shifts: s.shifts, orders: s.orders,
+        activeTableOrders: s.activeTableOrders, offers: s.offers, psDevices: s.psDevices,
+        psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled
+      })
 
       // محاولة مع retry مرة واحدة
       const doSave = async () => {
