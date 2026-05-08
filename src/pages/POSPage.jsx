@@ -271,7 +271,8 @@ export default function POSPage() {
     if (currentUser?.role === 'cashier' && !activeShift) { alert('افتح شيفت أولاً'); return }
     const order = placeOrder(cart, { orderType, tableId: activeTable?.id, tableName: activeTable?.name, shiftId: activeShift?.id, cashierName: currentUser?.displayName, discountType, discountValue: discountAmount > 0 ? dv : 0 })
     setLastOrder(order)
-    setCart([]); setActiveTable(null); setMode('takeaway'); setDiscountVal(''); setCartOpen(false)
+    // لو كان طلب صالة نفضل في وضع الصالة عشان الكاشير يشوف قائمة الطاولات
+    setCart([]); setActiveTable(null); setDiscountVal(''); setCartOpen(false)
   }
 
   const handleHold = () => {
@@ -292,7 +293,7 @@ export default function POSPage() {
       printBaristaTicket({ items: newItems, tableName: activeTable.name })
     }
 
-    setCart([]); setActiveTable(null); setMode('takeaway'); setCartOpen(false)
+    setCart([]); setActiveTable(null); setCartOpen(false)
   }
 
   const selectTable = (t) => {
