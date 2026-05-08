@@ -32,7 +32,7 @@ const BASE_STYLE = `
   </style>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;900&display=swap" rel="stylesheet">
 `
-const PRINT_SCRIPT = `<script>window.onload=()=>{window.print();setTimeout(()=>window.close(),1500)}<\/script>`
+const PRINT_SCRIPT = `<script>window.onload=()=>{window.print();window.addEventListener('afterprint',()=>window.close())}<\/script>`
 
 // ─── تقرير المبيعات ───────────────────────────────────────
 export function exportSalesReport({ orders, metrics, period, cafeName }) {
@@ -109,13 +109,14 @@ export function printReceipt({ order, cafeName, cashierName }) {
 
   printWindow(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
     <style>
+      @page{size:auto;margin:5mm 4mm}
       *{margin:0;padding:0;box-sizing:border-box}
-      body{font-family:'Cairo',monospace;width:80mm;padding:12px;font-size:12px;direction:rtl}
+      body{font-family:'Cairo',monospace;width:100%;padding:12px;font-size:12px;direction:rtl}
       h2{text-align:center;font-size:16px;margin-bottom:2px}
       .center{text-align:center} .sep{border-top:1px dashed #000;margin:8px 0}
       .row{display:flex;justify-content:space-between;margin:3px 0}
       .total{font-size:16px;font-weight:900}
-      @media print{body{width:80mm}}
+      @media print{body{padding:4px}}
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700&display=swap" rel="stylesheet">
   </head><body>
@@ -148,12 +149,13 @@ export function printBaristaTicket({ items, tableName }) {
 
   printWindow(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
     <style>
+      @page{size:auto;margin:5mm 4mm}
       *{margin:0;padding:0;box-sizing:border-box}
-      body{font-family:'Cairo',monospace;width:80mm;padding:14px;font-size:13px;direction:rtl}
+      body{font-family:'Cairo',monospace;width:100%;padding:14px;font-size:13px;direction:rtl}
       h2{text-align:center;font-size:20px;font-weight:900;margin-bottom:3px}
       .sub{text-align:center;font-size:13px;color:#334155;font-weight:700;margin-bottom:2px}
       .sep{border-top:2px dashed #000;margin:10px 0}
-      @media print{body{width:80mm}}
+      @media print{body{padding:6px}}
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;900&display=swap" rel="stylesheet">
   </head><body>
