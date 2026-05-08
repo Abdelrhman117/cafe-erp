@@ -100,6 +100,13 @@ export function exportEmployeeReport({ employee, orders, shifts, cafeName }) {
 
 // ─── إيصال طباعة ─────────────────────────────────────────
 export function printReceipt({ order, cafeName, cashierName }) {
+  const itemRows = (order.items || []).map(i => {
+    const optsStr = i.selectedOptions && Object.keys(i.selectedOptions).length > 0
+      ? `<div style="font-size:10px;color:#64748b;margin-right:10px">${Object.entries(i.selectedOptions).map(([k,v]) => `${k}: ${v}`).join(' • ')}</div>`
+      : ''
+    return `<div class="row"><span>${i.quantity}× ${i.name}</span><span>${(i.price * i.quantity).toFixed(2)}</span></div>${optsStr}`
+  }).join('')
+
   printWindow(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
     <style>
       *{margin:0;padding:0;box-sizing:border-box}
@@ -115,9 +122,7 @@ export function printReceipt({ order, cafeName, cashierName }) {
     <h2>${cafeName}</h2>
     <div class="center" style="font-size:10px;color:#666;margin-bottom:4px">رقم: ${String(order.id).slice(-6)}</div>
     <div class="center sep" style="font-size:10px;padding-top:4px">${order.date}</div>
-    <div style="margin:8px 0">
-      ${(order.items || []).map(i => `<div class="row"><span>${i.quantity}× ${i.name}</span><span>${(i.price * i.quantity).toFixed(2)}</span></div>`).join('')}
-    </div>
+    <div style="margin:8px 0">${itemRows}</div>
     <div class="sep"></div>
     <div class="row"><span>المجموع</span><span>${order.subtotal?.toFixed(2)} ج</span></div>
     ${order.discountAmount > 0 ? `<div class="row" style="color:#16a34a"><span>خصم</span><span>-${order.discountAmount.toFixed(2)} ج</span></div>` : ''}
@@ -127,6 +132,37 @@ export function printReceipt({ order, cafeName, cashierName }) {
     <div class="sep" style="margin-top:12px"></div>
     <div class="center" style="font-size:10px;color:#666">الكاشير: ${cashierName}</div>
     <div class="center" style="font-size:10px;color:#666;margin-top:4px">شكراً لزيارتكم 🌟</div>
+    ${PRINT_SCRIPT}
+  </body></html>`)
+}
+
+// ─── تذكرة الباريستا ──────────────────────────────────────
+export function printBaristaTicket({ items, tableName }) {
+  const time = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
+  const rows = items.map(i => {
+    const optsStr = i.selectedOptions && Object.keys(i.selectedOptions).length > 0
+      ? `<div style="font-size:11px;color:#475569;margin-right:14px;margin-top:2px">${Object.entries(i.selectedOptions).map(([k,v]) => `${k}: <b>${v}</b>`).join(' &nbsp;•&nbsp; ')}</div>`
+      : ''
+    return `<div style="margin-bottom:10px"><div style="font-size:16px;font-weight:900">${i.quantity}× ${i.name}</div>${optsStr}</div>`
+  }).join('')
+
+  printWindow(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:'Cairo',monospace;width:80mm;padding:14px;font-size:13px;direction:rtl}
+      h2{text-align:center;font-size:20px;font-weight:900;margin-bottom:3px}
+      .sub{text-align:center;font-size:13px;color:#334155;font-weight:700;margin-bottom:2px}
+      .sep{border-top:2px dashed #000;margin:10px 0}
+      @media print{body{width:80mm}}
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;900&display=swap" rel="stylesheet">
+  </head><body>
+    <h2>☕ طلب باريستا</h2>
+    <div class="sub">${tableName}</div>
+    <div class="sub" style="color:#64748b;font-size:11px">${time}</div>
+    <div class="sep"></div>
+    ${rows}
+    <div class="sep"></div>
     ${PRINT_SCRIPT}
   </body></html>`)
 }

@@ -1,10 +1,9 @@
 import { useState, useRef } from 'react'
 import { Coffee, Plus, Trash2, AlertCircle, AlertTriangle, Calendar,
-         Edit2, Check, X as XIcon, Camera, Upload, Link, Image } from 'lucide-react'
+         Edit2, Check, X as XIcon, Camera, Upload, Link, Image, Settings2 } from 'lucide-react'
 import { useStore, selectExpiringProducts } from '../store'
 import { Modal, ConfirmDelete, PageHeader, Input, Select, Btn, AlertBanner } from '../components/UI'
 
-// ── Resize image to base64 max 400px ─────────────────────
 function resizeImage(file, maxSize = 400) {
   return new Promise((res, rej) => {
     const reader = new FileReader()
@@ -26,7 +25,6 @@ function resizeImage(file, maxSize = 400) {
   })
 }
 
-// ── Inline price editor ───────────────────────────────────
 function PriceCell({ product, onSave }) {
   const [editing, setEditing] = useState(false)
   const [val,     setVal]     = useState(product.price)
@@ -60,9 +58,8 @@ function PriceCell({ product, onSave }) {
   )
 }
 
-// ── Image upload modal ────────────────────────────────────
 function ImageModal({ product, onSave, onClose }) {
-  const [tab,       setTab]       = useState('upload')   // 'upload' | 'url'
+  const [tab,       setTab]       = useState('upload')
   const [urlVal,    setUrlVal]    = useState(product.image?.startsWith('http') ? product.image : '')
   const [preview,   setPreview]   = useState(product.image || '')
   const [uploading, setUploading] = useState(false)
@@ -81,11 +78,7 @@ function ImageModal({ product, onSave, onClose }) {
     finally { setUploading(false) }
   }
 
-  const handleUrlChange = (v) => {
-    setUrlVal(v)
-    setPreview(v)
-    setErr('')
-  }
+  const handleUrlChange = (v) => { setUrlVal(v); setPreview(v); setErr('') }
 
   const handleSave = () => {
     const img = tab === 'url' ? urlVal.trim() : preview
@@ -96,8 +89,6 @@ function ImageModal({ product, onSave, onClose }) {
   return (
     <Modal title={`صورة — ${product.name}`} onClose={onClose} size="sm">
       <div className="space-y-4">
-
-        {/* Preview */}
         <div className="flex justify-center">
           <div className="w-36 h-36 rounded-2xl border-2 border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
             {preview
@@ -107,8 +98,6 @@ function ImageModal({ product, onSave, onClose }) {
             }
           </div>
         </div>
-
-        {/* Tabs */}
         <div className="flex gap-2 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
           <button onClick={() => setTab('upload')}
             className={`flex-1 py-2 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-colors
@@ -121,38 +110,25 @@ function ImageModal({ product, onSave, onClose }) {
             <Link size={13} /> رابط URL
           </button>
         </div>
-
-        {/* Upload tab */}
         {tab === 'upload' && (
           <div>
             <div onClick={() => fileRef.current?.click()}
               className="border-2 border-dashed border-indigo-300 dark:border-indigo-700 rounded-2xl p-6 text-center cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors">
               {uploading
                 ? <div className="text-indigo-500 font-bold text-sm">جاري الضغط والرفع...</div>
-                : <>
-                    <Upload size={24} className="text-indigo-400 mx-auto mb-2" />
-                    <p className="text-sm font-bold text-slate-500 dark:text-slate-400">اضغط لاختيار صورة</p>
-                    <p className="text-xs text-slate-400 mt-1">PNG, JPG, WEBP — حتى 5MB</p>
-                  </>
+                : <><Upload size={24} className="text-indigo-400 mx-auto mb-2" /><p className="text-sm font-bold text-slate-500 dark:text-slate-400">اضغط لاختيار صورة</p><p className="text-xs text-slate-400 mt-1">PNG, JPG, WEBP — حتى 5MB</p></>
               }
             </div>
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
           </div>
         )}
-
-        {/* URL tab */}
         {tab === 'url' && (
-          <input type="url" value={urlVal} dir="ltr"
-            onChange={e => handleUrlChange(e.target.value)}
+          <input type="url" value={urlVal} dir="ltr" onChange={e => handleUrlChange(e.target.value)}
             placeholder="https://example.com/image.jpg"
             className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-indigo-500 font-bold text-slate-800 dark:text-white text-sm"
           />
         )}
-
-        {/* Error */}
         {err && <p className="text-xs text-rose-500 font-bold text-center">{err}</p>}
-
-        {/* Actions */}
         <div className="flex gap-2">
           {(preview || product.image) && (
             <button onClick={() => { setPreview(''); setUrlVal(''); onSave(null); onClose() }}
@@ -160,8 +136,7 @@ function ImageModal({ product, onSave, onClose }) {
               حذف الصورة
             </button>
           )}
-          <Btn onClick={handleSave} disabled={uploading || (!preview && tab === 'upload' && !product.image)}
-            className="flex-1 justify-center py-3">
+          <Btn onClick={handleSave} disabled={uploading || (!preview && tab === 'upload' && !product.image)} className="flex-1 justify-center py-3">
             حفظ الصورة
           </Btn>
         </div>
@@ -170,17 +145,19 @@ function ImageModal({ product, onSave, onClose }) {
   )
 }
 
-// ── Main Page ─────────────────────────────────────────────
+const EMPTY_FORM = { name: '', category: '', price: '', image: '', expiryDate: '', recipe: [], options: [] }
+
 export default function ProductsPage() {
   const { products, rawMaterials, upsertProduct, deleteProduct } = useStore()
   const { expired, nearExpiry } = useStore(selectExpiringProducts)
 
   const [showModal,   setShowModal]   = useState(false)
+  const [editProduct, setEditProduct] = useState(null)
   const [deleteId,    setDeleteId]    = useState(null)
-  const [imageTarget, setImageTarget] = useState(null)  // product being edited
+  const [imageTarget, setImageTarget] = useState(null)
   const [search,      setSearch]      = useState('')
   const [filterCat,   setFilterCat]   = useState('الكل')
-  const [form, setForm] = useState({ name: '', category: '', price: '', image: '', expiryDate: '', recipe: [] })
+  const [form,        setForm]        = useState(EMPTY_FORM)
 
   const categories = ['الكل', ...new Set(products.map(p => p.category).filter(Boolean))]
 
@@ -191,20 +168,30 @@ export default function ProductsPage() {
   })
 
   const openAdd = () => {
-    setForm({ name: '', category: '', price: '', image: '', expiryDate: '', recipe: [] })
+    setEditProduct(null)
+    setForm(EMPTY_FORM)
+    setShowModal(true)
+  }
+
+  const openEdit = (p) => {
+    setEditProduct(p)
+    setForm({ ...p, price: String(p.price), options: p.options || [], recipe: p.recipe || [] })
     setShowModal(true)
   }
 
   const handleSave = (e) => {
     e.preventDefault()
     upsertProduct({
+      ...(editProduct || {}),
       ...form,
       price:      parseFloat(form.price),
       image:      form.image || null,
       expiryDate: form.expiryDate || null,
-      recipe:     form.recipe.filter(r => r.materialId && r.amount > 0)
+      recipe:     form.recipe.filter(r => r.materialId && r.amount > 0),
+      options:    (form.options || []).filter(o => o.name.trim() && o.choices.length > 0)
     })
     setShowModal(false)
+    setEditProduct(null)
   }
 
   const saveImage = (product, image) => upsertProduct({ ...product, image })
@@ -213,6 +200,16 @@ export default function ProductsPage() {
   const removeRecipeRow = (i) => setForm(f => ({ ...f, recipe: f.recipe.filter((_, idx) => idx !== i) }))
   const updateRecipe    = (i, field, value) => setForm(f => {
     const r = [...f.recipe]; r[i] = { ...r[i], [field]: value }; return { ...f, recipe: r }
+  })
+
+  const addOptionGroup    = () => setForm(f => ({ ...f, options: [...(f.options||[]), { id: crypto.randomUUID(), name: '', choices: [], required: false }] }))
+  const removeOptionGroup = (i) => setForm(f => ({ ...f, options: f.options.filter((_, idx) => idx !== i) }))
+  const updateOptionName  = (i, val) => setForm(f => { const o = [...f.options]; o[i] = { ...o[i], name: val }; return { ...f, options: o } })
+  const updateOptionReq   = (i, val) => setForm(f => { const o = [...f.options]; o[i] = { ...o[i], required: val }; return { ...f, options: o } })
+  const updateOptionChoices = (i, raw) => setForm(f => {
+    const o = [...f.options]
+    o[i] = { ...o[i], choices: raw.split(',').map(s => s.trim()).filter(Boolean) }
+    return { ...f, options: o }
   })
 
   const isExpired = (p) => p.expiryDate && new Date(p.expiryDate) <= new Date()
@@ -231,7 +228,6 @@ export default function ProductsPage() {
         action={<Btn onClick={openAdd}><Plus size={17} /> منتج جديد</Btn>}
       />
 
-      {/* Alerts */}
       {expired.length > 0 && (
         <AlertBanner icon={<AlertCircle className="w-5 h-5 text-red-500" />}
           title={`🚫 منتجات منتهية الصلاحية (${expired.length})`}
@@ -253,7 +249,6 @@ export default function ProductsPage() {
           items={[]} color="slate" />
       )}
 
-      {/* Search + filter */}
       <div className="flex flex-col sm:flex-row gap-3">
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder="بحث في المنتجات..."
@@ -269,43 +264,40 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {/* Products grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
         {filtered.map(p => (
           <div key={p.id} className={`bg-white dark:bg-slate-800 rounded-3xl border-2 shadow-sm transition-colors overflow-hidden
             ${isExpired(p) ? 'border-red-300 dark:border-red-700' : isNearExp(p) ? 'border-amber-300 dark:border-amber-700' : 'border-slate-200 dark:border-slate-700'}`}>
 
-            {/* Image area — click to change */}
             <div className="relative group cursor-pointer" onClick={() => setImageTarget(p)}>
               {p.image
-                ? <img src={p.image} alt={p.name}
-                    className="w-full h-40 object-cover"
+                ? <img src={p.image} alt={p.name} className="w-full h-40 object-cover"
                     onError={e => { e.target.onerror=null; e.target.style.display='none' }} />
                 : <div className="w-full h-40 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 flex flex-col items-center justify-center gap-2">
                     <Coffee size={32} className="text-slate-300 dark:text-slate-600" />
                     <span className="text-xs font-bold text-slate-400">لا توجد صورة</span>
                   </div>
               }
-              {/* Hover overlay */}
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                 <div className="bg-white/90 text-slate-800 px-3 py-2 rounded-xl font-black text-xs flex items-center gap-1.5">
                   <Camera size={14} /> {p.image ? 'تغيير الصورة' : 'إضافة صورة'}
                 </div>
               </div>
-              {/* No image badge */}
               {!p.image && (
-                <div className="absolute top-2 left-2 bg-slate-500/80 text-white text-[9px] font-black px-2 py-0.5 rounded-full">
-                  بدون صورة
-                </div>
+                <div className="absolute top-2 left-2 bg-slate-500/80 text-white text-[9px] font-black px-2 py-0.5 rounded-full">بدون صورة</div>
               )}
             </div>
 
-            {/* Card content */}
             <div className="p-4">
               <div className="flex justify-between items-start mb-3">
                 <div className="min-w-0 flex-1 ml-2">
                   <h3 className="font-black text-base text-slate-800 dark:text-white truncate">{p.name}</h3>
                   <p className="text-xs text-slate-400 font-bold mt-0.5">{p.category}</p>
+                  {p.options?.length > 0 && (
+                    <p className="text-[10px] font-bold text-indigo-500 mt-0.5 flex items-center gap-1">
+                      <Settings2 size={9} /> {p.options.length} مجموعة اختيارات
+                    </p>
+                  )}
                   {p.expiryDate && (
                     <p className={`text-[10px] font-bold mt-0.5 flex items-center gap-1
                       ${isExpired(p) ? 'text-red-600' : isNearExp(p) ? 'text-amber-600' : 'text-slate-400'}`}>
@@ -317,7 +309,6 @@ export default function ProductsPage() {
                 <PriceCell product={p} onSave={price => upsertProduct({ ...p, price })} />
               </div>
 
-              {/* Recipe */}
               {p.recipe?.length > 0 && (
                 <div className="space-y-1 mb-3">
                   {p.recipe.slice(0, 3).map((r, i) => {
@@ -335,15 +326,15 @@ export default function ProductsPage() {
                 </div>
               )}
 
-              {/* Actions */}
               <div className="flex gap-2 mt-2">
                 <button onClick={() => setImageTarget(p)}
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black transition-colors flex-1 justify-center
-                    ${p.image
-                      ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100'
-                      : 'bg-slate-100 dark:bg-slate-700 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-900/30 dark:hover:text-indigo-400'}`}>
-                  <Camera size={13} />
-                  {p.image ? 'تغيير الصورة' : 'إضافة صورة'}
+                    ${p.image ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600'}`}>
+                  <Camera size={13} /> {p.image ? 'تغيير' : 'صورة'}
+                </button>
+                <button onClick={() => openEdit(p)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 transition-colors flex-1 justify-center">
+                  <Edit2 size={13} /> تعديل
                 </button>
                 <button onClick={() => setDeleteId(p.id)}
                   className="text-rose-500 bg-rose-50 dark:bg-rose-900/30 hover:bg-rose-100 p-2.5 rounded-xl transition-colors">
@@ -356,14 +347,14 @@ export default function ProductsPage() {
 
         {!filtered.length && (
           <div className="col-span-3 text-center py-16 text-slate-400 font-bold">
-            {search || filterCat !== 'الكل' ? `لا توجد نتائج` : 'لا توجد منتجات'}
+            {search || filterCat !== 'الكل' ? 'لا توجد نتائج' : 'لا توجد منتجات'}
           </div>
         )}
       </div>
 
-      {/* Add modal */}
+      {/* Add / Edit modal */}
       {showModal && (
-        <Modal title="إضافة منتج" onClose={() => setShowModal(false)} size="lg">
+        <Modal title={editProduct ? `تعديل — ${editProduct.name}` : 'إضافة منتج'} onClose={() => { setShowModal(false); setEditProduct(null) }} size="lg">
           <form onSubmit={handleSave} className="space-y-4">
             <Input label="اسم المنتج" required value={form.name}
               onChange={e => setForm({ ...form, name: e.target.value })} placeholder="مثال: لاتيه، موهيتو..." />
@@ -380,6 +371,58 @@ export default function ProductsPage() {
                 onChange={e => setForm({ ...form, expiryDate: e.target.value })} />
               <Input label="رابط الصورة (اختياري)" value={form.image} dir="ltr"
                 onChange={e => setForm({ ...form, image: e.target.value })} placeholder="https://..." />
+            </div>
+
+            {/* Options builder */}
+            <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+              <div className="flex justify-between items-center mb-3">
+                <label className="text-sm font-black text-slate-700 dark:text-white flex items-center gap-1.5">
+                  <Settings2 size={15} className="text-indigo-500" /> اختيارات الصنف
+                  <span className="text-xs font-bold text-slate-400">(اختياري)</span>
+                </label>
+                <button type="button" onClick={addOptionGroup}
+                  className="text-xs bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-200 px-3 py-1.5 rounded-lg font-bold">
+                  + مجموعة
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400 font-bold mb-3">مثال: مجموعة "السكر" باختيارات: ساده,مظبوط,زياده,مانو</p>
+              <div className="space-y-2 max-h-52 overflow-y-auto custom-scrollbar">
+                {(form.options || []).map((opt, i) => (
+                  <div key={opt.id} className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-3 space-y-2 border border-slate-200 dark:border-slate-700">
+                    <div className="flex gap-2 items-center">
+                      <input
+                        placeholder="اسم المجموعة (مثال: السكر، الحليب...)"
+                        value={opt.name}
+                        onChange={e => updateOptionName(i, e.target.value)}
+                        className="flex-1 p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold bg-white dark:bg-slate-800 outline-none focus:border-indigo-500 text-slate-800 dark:text-white"
+                      />
+                      <label className="flex items-center gap-1 text-xs font-bold text-slate-600 dark:text-slate-400 whitespace-nowrap cursor-pointer">
+                        <input type="checkbox" checked={opt.required}
+                          onChange={e => updateOptionReq(i, e.target.checked)}
+                          className="accent-indigo-600" />
+                        إجباري
+                      </label>
+                      <button type="button" onClick={() => removeOptionGroup(i)}
+                        className="text-rose-500 bg-rose-50 dark:bg-rose-900/30 p-1.5 rounded-lg hover:bg-rose-100 shrink-0">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                    <input
+                      placeholder="الاختيارات مفصولة بفاصلة: ساده,مظبوط,زياده,مانو"
+                      value={opt.choices.join(',')}
+                      onChange={e => updateOptionChoices(i, e.target.value)}
+                      className="w-full p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold bg-white dark:bg-slate-800 outline-none focus:border-indigo-500 text-slate-800 dark:text-white"
+                    />
+                    {opt.choices.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {opt.choices.map(c => (
+                          <span key={c} className="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full text-[10px] font-bold">{c}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Recipe builder */}
@@ -417,18 +460,15 @@ export default function ProductsPage() {
               </div>
             </div>
 
-            <Btn type="submit" className="w-full justify-center py-4 text-base">حفظ المنتج</Btn>
+            <Btn type="submit" className="w-full justify-center py-4 text-base">
+              {editProduct ? 'حفظ التعديلات' : 'حفظ المنتج'}
+            </Btn>
           </form>
         </Modal>
       )}
 
-      {/* Image modal */}
       {imageTarget && (
-        <ImageModal
-          product={imageTarget}
-          onSave={(img) => saveImage(imageTarget, img)}
-          onClose={() => setImageTarget(null)}
-        />
+        <ImageModal product={imageTarget} onSave={(img) => saveImage(imageTarget, img)} onClose={() => setImageTarget(null)} />
       )}
 
       {deleteId && (
