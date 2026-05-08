@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { ShoppingCart, Plus, Minus, X, Banknote, Save, Package, Coffee,
          Armchair, Receipt, Gamepad2, Tag, Play, Power, Clock, Gift, Scissors } from 'lucide-react'
 import { useStore } from '../store'
@@ -207,9 +207,6 @@ export default function POSPage() {
   const [lastOrder,     setLastOrder]     = useState(null)
   const [cartOpen,      setCartOpen]      = useState(false)
 
-  // baseline cart عند فتح الطاولة — مش بيتأثر بأي Firestore update
-  const tableBaseline = useRef([])
-
   // Options modal
   const [optionsTarget, setOptionsTarget] = useState(null) // { product, price }
   const [pendingOpts,   setPendingOpts]   = useState({})
@@ -269,33 +266,40 @@ export default function POSPage() {
   const tax            = isTaxEnabled ? afterDiscount * 0.14 : 0
   const total          = afterDiscount + tax
 
+  // مفتاح localStorage لآخر حاجة اتبعتت للباريستا لكل طاولة
+  const baristaKey = (tableId) => `erp_barista_${currentUser?.cafeId || 'x'}_${tableId}`
+
   const handlePay = () => {
     if (!cart.length) return
     if (currentUser?.role === 'cashier' && !activeShift) { alert('افتح شيفت أولاً'); return }
+    // لما الطاولة تتدفع، امسح baseline الباريستا
+    if (activeTable) try { localStorage.removeItem(baristaKey(activeTable.id)) } catch {}
     const order = placeOrder(cart, { orderType, tableId: activeTable?.id, tableName: activeTable?.name, shiftId: activeShift?.id, cashierName: currentUser?.displayName, discountType, discountValue: discountAmount > 0 ? dv : 0 })
     setLastOrder(order)
-    // لو كان طلب صالة نفضل في وضع الصالة عشان الكاشير يشوف قائمة الطاولات
     setCart([]); setActiveTable(null); setDiscountVal(''); setCartOpen(false)
   }
 
   const handleHold = () => {
     if (!activeTable || !cart.length) return
 
-    // الأصناف الجديدة = الفرق بين السلة الحالية والـ snapshot اللي اتحفظ عند فتح الطاولة
-    const baseline = tableBaseline.current
+    // اقرأ آخر حاجة اتبعتت للباريستا من localStorage
+    let lastSent = []
+    try { lastSent = JSON.parse(localStorage.getItem(baristaKey(activeTable.id)) || '[]') } catch {}
+
+    // الأصناف الجديدة = الفرق بين السلة الحالية وآخر طباعة
     const newItems = cart.flatMap(item => {
       const key      = item.cartKey || item.id
-      const prev     = baseline.find(i => (i.cartKey || i.id) === key)
+      const prev     = lastSent.find(i => (i.cartKey || i.id) === key)
       const addedQty = item.quantity - (prev?.quantity || 0)
       return addedQty > 0 ? [{ ...item, quantity: addedQty }] : []
     })
 
-    holdTable(activeTable.id, cart)
-    tableBaseline.current = []
+    // احفظ السلة الحالية كـ baseline جديد قبل الطباعة
+    try { localStorage.setItem(baristaKey(activeTable.id), JSON.stringify(cart)) } catch {}
 
-    if (newItems.length > 0) {
-      printBaristaTicket({ items: newItems, tableName: activeTable.name })
-    }
+    holdTable(activeTable.id, cart)
+
+    if (newItems.length > 0) printBaristaTicket({ items: newItems, tableName: activeTable.name })
 
     setCart([]); setActiveTable(null); setCartOpen(false)
   }
@@ -303,9 +307,7 @@ export default function POSPage() {
   const selectTable = (t) => {
     setActiveTable(t)
     const saved = activeTableOrders[t.id]
-    const normalized = (Array.isArray(saved) ? saved : []).map(item => ({ ...item, cartKey: item.cartKey || item.id }))
-    tableBaseline.current = normalized  // snapshot الحالة المحفوظة — لحساب الأصناف الجديدة
-    setCart(normalized)
+    setCart((Array.isArray(saved) ? saved : []).map(item => ({ ...item, cartKey: item.cartKey || item.id })))
   }
 
   const TABS = [
