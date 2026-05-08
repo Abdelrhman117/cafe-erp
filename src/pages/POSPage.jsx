@@ -1,9 +1,9 @@
 import { useState, useMemo, useEffect } from 'react'
 import { ShoppingCart, Plus, Minus, X, Banknote, Save, Package, Coffee,
-         Armchair, RefreshCw, Receipt, Gamepad2, Tag, Play, Power, Clock, Gift } from 'lucide-react'
+         Armchair, Receipt, Gamepad2, Tag, Play, Power, Clock, Gift, Scissors } from 'lucide-react'
 import { useStore } from '../store'
-import { printReceipt } from '../lib/pdf'
-import { Modal } from '../components/UI'
+import { printReceipt, printBaristaTicket } from '../lib/pdf'
+import { Modal, Btn } from '../components/UI'
 
 function getOfferPrice(product, offers) {
   if (!product || !offers?.length) return product?.price
@@ -24,12 +24,14 @@ function getOfferPrice(product, offers) {
 function ProductCard({ product, offers, onAdd }) {
   const offerPrice = useMemo(() => getOfferPrice(product, offers), [product, offers])
   const hasOffer   = offerPrice < product.price
+  const hasOptions = product.options?.length > 0
   return (
     <button
       onClick={() => onAdd(product, offerPrice)}
       className="bg-white dark:bg-slate-800 p-3 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-indigo-500 hover:shadow-md transition-all flex flex-col items-center text-center gap-2 group relative"
     >
       {hasOffer && <div className="absolute top-1.5 right-1.5 bg-rose-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full z-10">عرض</div>}
+      {hasOptions && <div className="absolute top-1.5 left-1.5 bg-indigo-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full z-10">اختيارات</div>}
       {product.image
         ? <img src={product.image} alt={product.name} className="w-14 h-14 rounded-full object-cover group-hover:scale-110 transition-transform border-2 border-slate-100 dark:border-slate-600"
             onError={e => { e.target.onerror = null; e.target.src = 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=200&q=80' }} />
@@ -45,22 +47,27 @@ function ProductCard({ product, offers, onAdd }) {
 }
 
 function CartItem({ item, onInc, onDec }) {
+  const opts = item.selectedOptions
+  const optsText = opts && Object.keys(opts).length > 0
+    ? Object.entries(opts).map(([k, v]) => `${k}: ${v}`).join(' • ')
+    : null
   return (
-    <div className="bg-slate-50 dark:bg-slate-700/50 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-600 flex justify-between items-center">
-      <div className="flex gap-2 items-center min-w-0">
+    <div className="bg-slate-50 dark:bg-slate-700/50 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-600 flex justify-between items-center gap-2">
+      <div className="flex gap-2 items-center min-w-0 flex-1">
         {item.image
           ? <img src={item.image} alt={item.name} className="w-9 h-9 rounded-xl object-cover shrink-0" onError={e => { e.target.onerror=null; e.target.src='https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=200&q=80' }} />
           : <div className="w-9 h-9 bg-indigo-100 dark:bg-indigo-900 text-indigo-500 rounded-xl flex items-center justify-center shrink-0"><Coffee size={13} /></div>
         }
         <div className="min-w-0">
-          <p className="font-bold text-slate-800 dark:text-white text-xs truncate max-w-[120px]">{item.name}</p>
+          <p className="font-bold text-slate-800 dark:text-white text-xs truncate max-w-[110px]">{item.name}</p>
+          {optsText && <p className="text-[9px] font-bold text-indigo-400 truncate max-w-[110px]">{optsText}</p>}
           <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400">{(item.price * item.quantity).toFixed(2)} ج</p>
         </div>
       </div>
       <div className="flex items-center gap-1 bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-600 shrink-0">
-        <button onClick={() => onInc(item.id)} className="text-emerald-500 p-1 hover:bg-emerald-50 dark:hover:bg-slate-700 rounded-lg"><Plus size={12} /></button>
+        <button onClick={onInc} className="text-emerald-500 p-1 hover:bg-emerald-50 dark:hover:bg-slate-700 rounded-lg"><Plus size={12} /></button>
         <span className="font-black w-5 text-center text-xs text-slate-800 dark:text-white">{item.quantity}</span>
-        <button onClick={() => onDec(item.id)} className="text-rose-500 p-1 hover:bg-rose-50 dark:hover:bg-slate-700 rounded-lg"><Minus size={12} /></button>
+        <button onClick={onDec} className="text-rose-500 p-1 hover:bg-rose-50 dark:hover:bg-slate-700 rounded-lg"><Minus size={12} /></button>
       </div>
     </div>
   )
@@ -181,19 +188,32 @@ function OffersPanel({ products }) {
   )
 }
 
+// ─── cart key helper ──────────────────────────────────────
+function makeCartKey(productId, selectedOpts = {}) {
+  const optsKey = Object.entries(selectedOpts).sort().map(([k, v]) => `${k}:${v}`).join(',')
+  return optsKey ? `${productId}__${optsKey}` : productId
+}
+
 export default function POSPage() {
   const { products, offers, tables, isTaxEnabled, activeTableOrders, currentUser, placeOrder, holdTable } = useStore()
   const activeShift = useStore(s => s.shifts.find(sh => sh.status === 'open' && sh.cashierName === s.currentUser?.displayName))
 
-  const [mode,         setMode]         = useState('takeaway')
-  const [activeTable,  setActiveTable]  = useState(null)
-  const [cart,         setCart]         = useState([])
-  const [catFilter,    setCatFilter]    = useState('all')
-  const [discountType, setDiscountType] = useState('percent')
-  const [discountVal,  setDiscountVal]  = useState('')
-  const [lastOrder,    setLastOrder]    = useState(null)
-  const [cartOpen,     setCartOpen]     = useState(false)
-  const [holding,      setHolding]      = useState(false)
+  const [mode,          setMode]          = useState('takeaway')
+  const [activeTable,   setActiveTable]   = useState(null)
+  const [cart,          setCart]          = useState([])
+  const [catFilter,     setCatFilter]     = useState('all')
+  const [discountType,  setDiscountType]  = useState('percent')
+  const [discountVal,   setDiscountVal]   = useState('')
+  const [lastOrder,     setLastOrder]     = useState(null)
+  const [cartOpen,      setCartOpen]      = useState(false)
+
+  // Options modal
+  const [optionsTarget, setOptionsTarget] = useState(null) // { product, price }
+  const [pendingOpts,   setPendingOpts]   = useState({})
+
+  // Bill split
+  const [splitOpen,  setSplitOpen]  = useState(false)
+  const [splitCount, setSplitCount] = useState(2)
 
   const isAdmin       = currentUser?.role === 'admin'
   const isProductMode = mode === 'takeaway' || mode === 'dine_in'
@@ -208,19 +228,35 @@ export default function POSPage() {
   }, [offers])
   const activePsCount = useStore(s => s.psSessions.filter(ss => ss.status === 'active').length)
 
-  const addItem = (product, price) => {
+  // ── Add to cart (with or without options) ────────────────
+  const addToCart = (product, price, selectedOpts = {}) => {
     if (mode === 'dine_in' && !activeTable) { alert('اختر طاولة أولاً'); return }
+    const key = makeCartKey(product.id, selectedOpts)
     setCart(prev => {
-      const ex = prev.find(i => i.id === product.id)
-      if (ex) return prev.map(i => i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i)
-      return [...prev, { ...product, price, quantity: 1 }]
+      const ex = prev.find(i => (i.cartKey || i.id) === key)
+      if (ex) return prev.map(i => (i.cartKey || i.id) === key ? { ...i, quantity: i.quantity + 1 } : i)
+      return [...prev, {
+        ...product, price, quantity: 1,
+        cartKey: key,
+        selectedOptions: Object.keys(selectedOpts).length ? selectedOpts : undefined
+      }]
     })
   }
-  const incItem = id => setCart(prev => prev.map(i => i.id === id ? { ...i, quantity: i.quantity + 1 } : i))
-  const decItem = id => setCart(prev => {
-    const it = prev.find(i => i.id === id)
-    if (it?.quantity <= 1) return prev.filter(i => i.id !== id)
-    return prev.map(i => i.id === id ? { ...i, quantity: i.quantity - 1 } : i)
+
+  const addItem = (product, price) => {
+    if (product.options?.length > 0) {
+      setPendingOpts({})
+      setOptionsTarget({ product, price })
+      return
+    }
+    addToCart(product, price)
+  }
+
+  const incItem = key => setCart(prev => prev.map(i => (i.cartKey || i.id) === key ? { ...i, quantity: i.quantity + 1 } : i))
+  const decItem = key => setCart(prev => {
+    const it = prev.find(i => (i.cartKey || i.id) === key)
+    if (it?.quantity <= 1) return prev.filter(i => (i.cartKey || i.id) !== key)
+    return prev.map(i => (i.cartKey || i.id) === key ? { ...i, quantity: i.quantity - 1 } : i)
   })
 
   const subtotal       = cart.reduce((s, i) => s + i.price * i.quantity, 0)
@@ -238,18 +274,32 @@ export default function POSPage() {
     setCart([]); setActiveTable(null); setMode('takeaway'); setDiscountVal(''); setCartOpen(false)
   }
 
-  const handleHold = async () => {
-    if (!activeTable || !cart.length || holding) return
-    setHolding(true)
-    await holdTable(activeTable.id, cart)
-    setHolding(false)
+  const handleHold = () => {
+    if (!activeTable || !cart.length) return
+
+    // حساب الأصناف الجديدة للباريستا
+    const prevCart = (activeTableOrders[activeTable.id] || []).map(i => ({ ...i, cartKey: i.cartKey || i.id }))
+    const newItems = cart.flatMap(item => {
+      const key     = item.cartKey || item.id
+      const prev    = prevCart.find(i => (i.cartKey || i.id) === key)
+      const addedQty = item.quantity - (prev?.quantity || 0)
+      return addedQty > 0 ? [{ ...item, quantity: addedQty }] : []
+    })
+
+    holdTable(activeTable.id, cart)
+
+    if (newItems.length > 0) {
+      printBaristaTicket({ items: newItems, tableName: activeTable.name })
+    }
+
     setCart([]); setActiveTable(null); setMode('takeaway'); setCartOpen(false)
   }
 
   const selectTable = (t) => {
     setActiveTable(t)
     const saved = activeTableOrders[t.id]
-    setCart(Array.isArray(saved) ? saved : [])
+    // normalize legacy items (no cartKey)
+    setCart((Array.isArray(saved) ? saved : []).map(item => ({ ...item, cartKey: item.cartKey || item.id })))
   }
 
   const TABS = [
@@ -275,7 +325,14 @@ export default function POSPage() {
       <div className="flex-1 overflow-auto p-3 space-y-2 custom-scrollbar">
         {!cart.length
           ? <div className="text-center text-slate-400 mt-16"><Package className="w-10 h-10 mx-auto mb-2 opacity-20" /><p className="font-bold text-sm">السلة فارغة</p></div>
-          : cart.map(item => <CartItem key={item.id} item={item} onInc={incItem} onDec={decItem} />)
+          : cart.map(item => (
+              <CartItem
+                key={item.cartKey || item.id}
+                item={item}
+                onInc={() => incItem(item.cartKey || item.id)}
+                onDec={() => decItem(item.cartKey || item.id)}
+              />
+            ))
         }
       </div>
 
@@ -305,14 +362,25 @@ export default function POSPage() {
             <span>الإجمالي</span><span className="text-indigo-600 dark:text-indigo-400">{total.toFixed(2)} ج</span>
           </div>
         </div>
+
         {mode === 'dine_in' && activeTable
-          ? <div className="flex gap-2">
-              <button onClick={handleHold} disabled={!cart.length || holding} className="flex-1 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-1.5 text-sm text-white disabled:opacity-50 bg-amber-500 hover:bg-amber-600 transition-colors">
-                {holding ? <><RefreshCw size={14} className="animate-spin" />جاري...</> : <><Save size={15} />تعليق</>}
-              </button>
-              <button onClick={handlePay} disabled={!cart.length} className="flex-1 py-3.5 rounded-2xl font-bold flex items-center justify-center gap-1.5 text-sm text-white disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700 transition-colors">
-                <Banknote size={15} /> دفع
-              </button>
+          ? <div className="space-y-2">
+              <div className="flex gap-2">
+                <button onClick={handleHold} disabled={!cart.length}
+                  className="flex-1 py-3 rounded-2xl font-bold flex items-center justify-center gap-1.5 text-sm text-white disabled:opacity-50 bg-amber-500 hover:bg-amber-600 transition-colors">
+                  <Save size={14} /> تعليق + طباعة
+                </button>
+                <button onClick={handlePay} disabled={!cart.length}
+                  className="flex-1 py-3 rounded-2xl font-bold flex items-center justify-center gap-1.5 text-sm text-white disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700 transition-colors">
+                  <Banknote size={14} /> دفع
+                </button>
+              </div>
+              {cart.length > 0 && (
+                <button onClick={() => { setSplitCount(2); setSplitOpen(true) }}
+                  className="w-full py-2.5 rounded-2xl font-bold flex items-center justify-center gap-2 text-sm text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 border border-indigo-200 dark:border-indigo-800 transition-colors">
+                  <Scissors size={14} /> تقسيم الحساب
+                </button>
+              )}
             </div>
           : <button onClick={handlePay} disabled={!cart.length} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 transition-colors text-base">
               <Banknote className="w-5 h-5" /> دفع وإصدار فاتورة
@@ -410,7 +478,75 @@ export default function POSPage() {
         </>
       )}
 
-      {/* Receipt */}
+      {/* ── Options selection modal ── */}
+      {optionsTarget && (
+        <Modal title={optionsTarget.product.name} onClose={() => setOptionsTarget(null)}>
+          <div className="space-y-5">
+            {optionsTarget.product.options.map(group => (
+              <div key={group.id}>
+                <p className="text-sm font-black text-slate-700 dark:text-white mb-2 flex items-center gap-1.5">
+                  {group.name}
+                  {group.required && <span className="text-rose-500 text-xs font-bold">* إجباري</span>}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {group.choices.map(choice => (
+                    <button key={choice}
+                      onClick={() => setPendingOpts(prev => ({ ...prev, [group.name]: choice }))}
+                      className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border-2
+                        ${pendingOpts[group.name] === choice
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-indigo-400'}`}>
+                      {choice}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <Btn
+              className="w-full justify-center py-3.5 text-base mt-2"
+              disabled={optionsTarget.product.options.filter(g => g.required).some(g => !pendingOpts[g.name])}
+              onClick={() => {
+                addToCart(optionsTarget.product, optionsTarget.price, pendingOpts)
+                setOptionsTarget(null)
+              }}>
+              إضافة للسلة
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Bill split modal ── */}
+      {splitOpen && (
+        <Modal title="تقسيم الحساب" onClose={() => setSplitOpen(false)} size="sm">
+          <div className="space-y-6 text-center py-2">
+            <div>
+              <p className="text-slate-500 text-sm font-bold mb-1">إجمالي الفاتورة</p>
+              <p className="text-4xl font-black text-indigo-600 dark:text-indigo-400">{total.toFixed(2)} ج</p>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-600 dark:text-slate-400 mb-4">عدد الأشخاص</p>
+              <div className="flex items-center justify-center gap-5">
+                <button onClick={() => setSplitCount(c => Math.max(2, c - 1))}
+                  className="w-11 h-11 rounded-2xl bg-slate-100 dark:bg-slate-700 font-black text-xl text-slate-700 dark:text-white hover:bg-slate-200 transition-colors">
+                  −
+                </button>
+                <span className="text-3xl font-black w-12 text-center text-slate-800 dark:text-white">{splitCount}</span>
+                <button onClick={() => setSplitCount(c => Math.min(20, c + 1))}
+                  className="w-11 h-11 rounded-2xl bg-slate-100 dark:bg-slate-700 font-black text-xl text-slate-700 dark:text-white hover:bg-slate-200 transition-colors">
+                  +
+                </button>
+              </div>
+            </div>
+            <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-5">
+              <p className="text-slate-500 text-sm font-bold mb-1">نصيب كل شخص</p>
+              <p className="text-4xl font-black text-indigo-600 dark:text-indigo-400">{(total / splitCount).toFixed(2)} ج</p>
+            </div>
+            <Btn className="w-full justify-center py-3.5 text-base" onClick={() => setSplitOpen(false)}>تم</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Receipt modal ── */}
       {lastOrder && (
         <Modal title="إيصال الدفع" onClose={() => setLastOrder(null)}>
           <div className="print-section p-6 bg-white text-black text-center font-mono border-2 border-dashed border-slate-300 rounded-2xl mx-auto max-w-[280px]">
@@ -418,9 +554,19 @@ export default function POSPage() {
             <h2 className="text-xl font-black mb-1">{currentUser?.cafeName}</h2>
             <p className="text-xs text-slate-500 mb-3">رقم: {String(lastOrder.id).slice(-6)}</p>
             <div className="border-y border-dashed border-slate-300 py-2 mb-3 text-xs">{lastOrder.date}</div>
-            <div className="space-y-1.5 mb-3 text-right text-sm">
+            <div className="space-y-2 mb-3 text-right text-sm">
               {lastOrder.items.map((i, idx) => (
-                <div key={idx} className="flex justify-between font-bold"><span>{i.quantity}× {i.name}</span><span>{(i.price * i.quantity).toFixed(2)}</span></div>
+                <div key={idx}>
+                  <div className="flex justify-between font-bold">
+                    <span>{i.quantity}× {i.name}</span>
+                    <span>{(i.price * i.quantity).toFixed(2)}</span>
+                  </div>
+                  {i.selectedOptions && Object.keys(i.selectedOptions).length > 0 && (
+                    <p className="text-[10px] text-slate-400 text-right mr-3">
+                      {Object.entries(i.selectedOptions).map(([k, v]) => `${k}: ${v}`).join(' • ')}
+                    </p>
+                  )}
+                </div>
               ))}
             </div>
             <div className="border-t border-dashed border-slate-300 pt-2 space-y-1 text-sm mb-2">
@@ -429,7 +575,12 @@ export default function POSPage() {
               {lastOrder.tax > 0 && <div className="flex justify-between font-bold text-slate-600"><span>ضريبة 14%</span><span>{lastOrder.tax.toFixed(2)}</span></div>}
             </div>
             <div className="flex justify-between font-black text-xl border-t-2 border-slate-800 pt-3"><span>الإجمالي</span><span>{lastOrder.total.toFixed(2)} ج</span></div>
-            <p className="text-[10px] mt-6 text-slate-500">الكاشير: {currentUser?.displayName}</p>
+            {lastOrder.lowStockWarnings?.length > 0 && (
+              <div className="mt-3 p-2 bg-amber-50 rounded-xl text-[10px] font-bold text-amber-700 text-right">
+                ⚠️ مخزون منخفض: {lastOrder.lowStockWarnings.join(', ')}
+              </div>
+            )}
+            <p className="text-[10px] mt-4 text-slate-500">الكاشير: {currentUser?.displayName}</p>
           </div>
           <button onClick={() => printReceipt({ order: lastOrder, cafeName: currentUser?.cafeName, cashierName: currentUser?.displayName })}
             className="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 no-print shadow-lg text-base">
