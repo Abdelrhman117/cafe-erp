@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { ShoppingCart, Plus, Minus, X, Banknote, Save, Package, Coffee,
          Armchair, Receipt, Gamepad2, Tag, Play, Power, Clock, Gift, Scissors } from 'lucide-react'
 import { useStore } from '../store'
@@ -207,6 +207,9 @@ export default function POSPage() {
   const [lastOrder,     setLastOrder]     = useState(null)
   const [cartOpen,      setCartOpen]      = useState(false)
 
+  // baseline cart عند فتح الطاولة — مش بيتأثر بأي Firestore update
+  const tableBaseline = useRef([])
+
   // Options modal
   const [optionsTarget, setOptionsTarget] = useState(null) // { product, price }
   const [pendingOpts,   setPendingOpts]   = useState({})
@@ -278,16 +281,17 @@ export default function POSPage() {
   const handleHold = () => {
     if (!activeTable || !cart.length) return
 
-    // حساب الأصناف الجديدة للباريستا
-    const prevCart = (activeTableOrders[activeTable.id] || []).map(i => ({ ...i, cartKey: i.cartKey || i.id }))
+    // الأصناف الجديدة = الفرق بين السلة الحالية والـ snapshot اللي اتحفظ عند فتح الطاولة
+    const baseline = tableBaseline.current
     const newItems = cart.flatMap(item => {
-      const key     = item.cartKey || item.id
-      const prev    = prevCart.find(i => (i.cartKey || i.id) === key)
+      const key      = item.cartKey || item.id
+      const prev     = baseline.find(i => (i.cartKey || i.id) === key)
       const addedQty = item.quantity - (prev?.quantity || 0)
       return addedQty > 0 ? [{ ...item, quantity: addedQty }] : []
     })
 
     holdTable(activeTable.id, cart)
+    tableBaseline.current = []
 
     if (newItems.length > 0) {
       printBaristaTicket({ items: newItems, tableName: activeTable.name })
@@ -299,8 +303,9 @@ export default function POSPage() {
   const selectTable = (t) => {
     setActiveTable(t)
     const saved = activeTableOrders[t.id]
-    // normalize legacy items (no cartKey)
-    setCart((Array.isArray(saved) ? saved : []).map(item => ({ ...item, cartKey: item.cartKey || item.id })))
+    const normalized = (Array.isArray(saved) ? saved : []).map(item => ({ ...item, cartKey: item.cartKey || item.id }))
+    tableBaseline.current = normalized  // snapshot الحالة المحفوظة — لحساب الأصناف الجديدة
+    setCart(normalized)
   }
 
   const TABS = [
