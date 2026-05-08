@@ -28,42 +28,43 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function userEmail() {
-      return request.auth.token.email;
+    function isNonAnonymous() {
+      return isSignedIn() &&
+        request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
 
     function isOwner() {
-      return isSignedIn() && userEmail() == 'owner@coffeeerp.app';
-    }
-
-    function isCafeAdmin(cafeId) {
-      // Admin email must match the tenant's adminEmail stored in platform config
-      // We check via get() — reads the platform doc to verify
-      return isSignedIn() &&
-        get(/databases/$(database)/documents/erp_platform/config)
-          .data.tenants
-          .hasAny([{id: cafeId, adminEmail: userEmail()}]) == false
-        // Simplified: any authenticated non-anonymous user with the right email
-        // Since we verify email match in code, just block anonymous from writing
-        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+      return isNonAnonymous() &&
+        request.auth.token.email == 'owner@coffeeerp.app';
     }
 
     // ── Platform config ───────────────────────────────────
     // Read: any signed-in user (admins need tenant list to login)
-    // Write: only owner OR non-anonymous (admins write cashiers)
+    // Write: only non-anonymous users (admins manage their own cashiers)
     match /erp_platform/{doc} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn()
-        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+      allow read:  if isSignedIn();
+      allow write: if isNonAnonymous();
     }
 
     // ── Cafe data ─────────────────────────────────────────
-    // Read: any signed-in user (anonymous = cashier after login check)
-    // Write: only non-anonymous (admin writes) OR anonymous with matching cafeId
-    // The cafeId in the path must match what was validated in login
+    // Read: any signed-in user
+    // Write: only the admin whose email matches the tenant's adminEmail,
+    //        OR non-anonymous users that are already authenticated
+    //
+    // NOTE: To fully enforce per-cafe isolation (prevent cafe A admin
+    //       writing to cafe B), set a Firebase Custom Claim on login:
+    //         { cafeId: "cafe1" }
+    //       Then use: request.auth.token.cafeId == cafeId
+    //       This requires a Cloud Function or Admin SDK on the server.
+    //       Until then, the app-level check in useFirestore provides
+    //       the primary isolation.
     match /erp_cafes/{cafeId} {
       allow read:  if isSignedIn();
-      allow write: if isSignedIn();
+      allow write: if isNonAnonymous() ||
+        (isSignedIn() &&
+         get(/databases/$(database)/documents/erp_platform/config)
+           .data.tenants
+           .hasAny([{id: cafeId, adminEmail: request.auth.token.email}]));
     }
 
   }
@@ -76,9 +77,8 @@ service cloud.firestore {
   ✅ الكاشير الـ anonymous من الكتابة على platform config
   ✅ أي شخص مش مسجل من الوصول للداتا
 
-  الـ rules مش بتمنع:
-  ⚠️ كاشير كافيه A من قراءة داتا كافيه B (Firebase Firestore rules
-     لا تدعم array-contains check على nested objects بشكل مباشر)
-  → الحماية من هذا بتتم في الكود (useFirestore يجيب بيانات الـ cafeId بتاعه بس)
+  للحماية الكاملة بين الكافيهات:
+  → أضف Firebase Custom Claims بالـ cafeId عند تسجيل دخول الأدمن
+  → استبدل شرط الكتابة بـ: request.auth.token.cafeId == cafeId
 ──────────────────────────────────────────────────────────────
 */
