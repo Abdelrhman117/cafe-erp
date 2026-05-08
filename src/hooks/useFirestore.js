@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '../lib/firebase'
 import { subscribePlatform, subscribeCafe } from '../lib/firestore'
+import { loadLocal, saveLocal } from '../lib/localCache'
 import { useStore } from '../store'
 
 const SESSION_KEY = 'erp_session'
@@ -100,11 +101,19 @@ export function useFirestore() {
   // ── Cafe subscription ─────────────────────────────────────
   useEffect(() => {
     if (!currentUser?.cafeId) return
+
+    // تحميل فوري من localStorage قبل ما Firestore يرد (أوفلاين-فيرست)
+    const cached = loadLocal(currentUser.cafeId)
+    if (cached) setCafeData(cached)
+
     const unsub = subscribeCafe(
       currentUser.cafeId,
       async (snap) => {
         if (snap.exists()) {
-          setCafeData(snap.data())
+          const data = snap.data()
+          setCafeData(data)
+          // حفظ في localStorage فقط لما البيانات تيجي من السيرفر (مش كاش)
+          if (!snap.metadata.fromCache) saveLocal(currentUser.cafeId, data)
           if (snap.metadata?.hasPendingWrites) setSyncStatus('saving')
           else setSyncStatus('idle')
         } else {
