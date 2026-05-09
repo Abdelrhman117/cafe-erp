@@ -31,9 +31,8 @@ jobs:
           VITE_OWNER_EMAIL: owner@coffeeerp.app
 
       - name: Deploy to Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.SERVICE_ACCOUNT }}
-          channelId: live
-          projectId: zerolets-3dcbf
+        run: |
+          echo '${{ secrets.SERVICE_ACCOUNT }}' > /tmp/sa.json
+          npx firebase-tools deploy --only hosting --project zerolets-3dcbf
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa.json
