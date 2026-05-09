@@ -87,7 +87,7 @@ export const useStore = create((set, get) => ({
   _syncTimer:  null,
   _syncBuffer: {},
 
-  sync: (partial) => {
+  sync: (partial, { immediate = false } = {}) => {
     const { currentUser } = get()
     if (!currentUser?.cafeId) return
 
@@ -132,7 +132,7 @@ export const useStore = create((set, get) => ({
           }
         }, 1000)
       }
-    }, 300)
+    }, immediate ? 0 : 300)
 
     set({ _syncTimer: timer })
   },
@@ -253,7 +253,7 @@ export const useStore = create((set, get) => ({
   // ── Orders / POS ─────────────────────────────────────────
   placeOrder: (cart, options) => {
     const { orders, rawMaterials, products, activeTableOrders, isTaxEnabled } = get()
-    const { orderType, tableId, shiftId, cashierName, discountType, discountValue, tableName } = options
+    const { orderType, tableId, shiftId, cashierName, discountType, discountValue, tableName, note } = options
     const TAX_RATE = 0.14
 
     // حساب المجاميع
@@ -290,23 +290,26 @@ export const useStore = create((set, get) => ({
       items: cart, subtotal, discountAmount, discountType, discountValue,
       tax, total, shiftId, cashierName,
       note: orderType === 'takeaway' ? 'تيك أواي' : `صالة — ${tableName}`,
+      orderNote: note || '',
       date: new Date().toLocaleString('ar-EG'),
       timestamp: Date.now()
     }
 
     const newOrders = [...orders, order]
+    // حذف الطاولة من activeTableOrders عند الدفع
     let newATO = { ...activeTableOrders }
-    if (orderType === 'dine_in' && tableId) delete newATO[tableId]
+    if (tableId) delete newATO[tableId]
 
     set({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO })
-    get().sync({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO })
+    // immediate: true لضمان حذف الطاولة فوراً دون تأخير 300ms
+    get().sync({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO }, { immediate: true })
     return { ...order, lowStockWarnings }
   },
 
   holdTable: (tableId, cart) => {
     const next = { ...get().activeTableOrders, [tableId]: cart }
     set({ activeTableOrders: next })
-    get().sync({ activeTableOrders: next })
+    get().sync({ activeTableOrders: next }, { immediate: true })
   },
 
   // ── PlayStation ───────────────────────────────────────────

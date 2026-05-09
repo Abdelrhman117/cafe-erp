@@ -199,7 +199,7 @@ function CartPanel({
   cart, mode, activeTable, isAdmin, subtotal, discountAmount, discountType,
   discountVal, setDiscountType, setDiscountVal, isTaxEnabled, tax, total,
   handleHold, handlePay, setSplitCount, setSplitOpen, incItem, decItem,
-  setCart, setActiveTable, setCartOpen
+  setCart, setActiveTable, setCartOpen, orderNote, setOrderNote
 }) {
   return (
     <div className="flex flex-col h-full">
@@ -227,6 +227,18 @@ function CartPanel({
             ))
         }
       </div>
+
+      {cart.length > 0 && (
+        <div className="px-3 pb-2">
+          <textarea
+            rows={2}
+            value={orderNote}
+            onChange={e => setOrderNote(e.target.value)}
+            placeholder="ملاحظات (سكر، حساسية، طلب خاص...)"
+            className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-200 outline-none resize-none placeholder:text-slate-400 focus:border-indigo-400 transition-colors"
+          />
+        </div>
+      )}
 
       {isAdmin && cart.length > 0 && (
         <div className="px-3 pb-2">
@@ -295,6 +307,7 @@ export default function POSPage() {
   const [discountVal,   setDiscountVal]   = useState('')
   const [lastOrder,     setLastOrder]     = useState(null)
   const [cartOpen,      setCartOpen]      = useState(false)
+  const [orderNote,     setOrderNote]     = useState('')
 
   // Options modal
   const [optionsTarget, setOptionsTarget] = useState(null) // { product, price }
@@ -358,9 +371,9 @@ export default function POSPage() {
   const handlePay = () => {
     if (!cart.length) return
     if (currentUser?.role === 'cashier' && !activeShift) { alert('افتح شيفت أولاً'); return }
-    const order = placeOrder(cart, { orderType, tableId: activeTable?.id, tableName: activeTable?.name, shiftId: activeShift?.id, cashierName: currentUser?.displayName, discountType, discountValue: discountAmount > 0 ? dv : 0 })
+    const order = placeOrder(cart, { orderType, tableId: activeTable?.id, tableName: activeTable?.name, shiftId: activeShift?.id, cashierName: currentUser?.displayName, discountType, discountValue: discountAmount > 0 ? dv : 0, note: orderNote })
     setLastOrder(order)
-    setCart([]); setActiveTable(null); setDiscountVal(''); setCartOpen(false)
+    setCart([]); setActiveTable(null); setDiscountVal(''); setOrderNote(''); setCartOpen(false)
   }
 
   const handleHold = () => {
@@ -374,9 +387,9 @@ export default function POSPage() {
 
     holdTable(activeTable.id, markedCart)
 
-    if (newItems.length > 0) printBaristaTicket({ items: newItems, tableName: activeTable.name })
+    if (newItems.length > 0) printBaristaTicket({ items: newItems, tableName: activeTable.name, note: orderNote })
 
-    setCart([]); setActiveTable(null); setCartOpen(false)
+    setCart([]); setActiveTable(null); setOrderNote(''); setCartOpen(false)
   }
 
   const selectTable = (t) => {
@@ -396,7 +409,7 @@ export default function POSPage() {
     cart, mode, activeTable, isAdmin, subtotal, discountAmount, discountType,
     discountVal, setDiscountType, setDiscountVal, isTaxEnabled, tax, total,
     handleHold, handlePay, setSplitCount, setSplitOpen, incItem, decItem,
-    setCart, setActiveTable, setCartOpen
+    setCart, setActiveTable, setCartOpen, orderNote, setOrderNote
   }
 
   return (
@@ -584,6 +597,11 @@ export default function POSPage() {
               {lastOrder.tax > 0 && <div className="flex justify-between font-bold text-slate-600"><span>ضريبة 14%</span><span>{lastOrder.tax.toFixed(2)}</span></div>}
             </div>
             <div className="flex justify-between font-black text-xl border-t-2 border-slate-800 pt-3"><span>الإجمالي</span><span>{lastOrder.total.toFixed(2)} ج</span></div>
+            {lastOrder.orderNote && (
+              <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] font-bold text-amber-800 text-right">
+                📝 {lastOrder.orderNote}
+              </div>
+            )}
             {lastOrder.lowStockWarnings?.length > 0 && (
               <div className="mt-3 p-2 bg-amber-50 rounded-xl text-[10px] font-bold text-amber-700 text-right">
                 ⚠️ مخزون منخفض: {lastOrder.lowStockWarnings.join(', ')}
