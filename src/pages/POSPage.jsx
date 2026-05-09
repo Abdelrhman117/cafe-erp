@@ -194,130 +194,14 @@ function makeCartKey(productId, selectedOpts = {}) {
   return optsKey ? `${productId}__${optsKey}` : productId
 }
 
-export default function POSPage() {
-  const { products, offers, tables, isTaxEnabled, activeTableOrders, currentUser, placeOrder, holdTable } = useStore()
-  const activeShift = useStore(s => s.shifts.find(sh => sh.status === 'open' && sh.cashierName === s.currentUser?.displayName))
-
-  const [mode,          setMode]          = useState('takeaway')
-  const [activeTable,   setActiveTable]   = useState(null)
-  const [cart,          setCart]          = useState([])
-  const [catFilter,     setCatFilter]     = useState('all')
-  const [discountType,  setDiscountType]  = useState('percent')
-  const [discountVal,   setDiscountVal]   = useState('')
-  const [lastOrder,     setLastOrder]     = useState(null)
-  const [cartOpen,      setCartOpen]      = useState(false)
-
-  // Options modal
-  const [optionsTarget, setOptionsTarget] = useState(null) // { product, price }
-  const [pendingOpts,   setPendingOpts]   = useState({})
-
-  // Bill split
-  const [splitOpen,  setSplitOpen]  = useState(false)
-  const [splitCount, setSplitCount] = useState(2)
-
-  const isAdmin       = currentUser?.role === 'admin'
-  const isProductMode = mode === 'takeaway' || mode === 'dine_in'
-  const orderType     = mode === 'dine_in' ? 'dine_in' : 'takeaway'
-
-  const categories       = useMemo(() => [...new Set(products.map(p => p.category).filter(Boolean))], [products])
-  const filteredProducts = useMemo(() => catFilter === 'all' ? products : products.filter(p => p.category === catFilter), [products, catFilter])
-
-  const activeOffersCount = useMemo(() => {
-    const today = new Date()
-    return offers.filter(o => o.isActive && (!o.startDate || today >= new Date(o.startDate)) && (!o.endDate || today <= new Date(o.endDate))).length
-  }, [offers])
-  const activePsCount = useStore(s => s.psSessions.filter(ss => ss.status === 'active').length)
-
-  // ── Add to cart (with or without options) ────────────────
-  const addToCart = (product, price, selectedOpts = {}) => {
-    if (mode === 'dine_in' && !activeTable) { alert('اختر طاولة أولاً'); return }
-    const key = makeCartKey(product.id, selectedOpts)
-    setCart(prev => {
-      const ex = prev.find(i => (i.cartKey || i.id) === key)
-      if (ex) return prev.map(i => (i.cartKey || i.id) === key ? { ...i, quantity: i.quantity + 1 } : i)
-      return [...prev, {
-        ...product, price, quantity: 1,
-        cartKey: key,
-        selectedOptions: Object.keys(selectedOpts).length ? selectedOpts : undefined
-      }]
-    })
-  }
-
-  const addItem = (product, price) => {
-    if (product.options?.length > 0) {
-      setPendingOpts({})
-      setOptionsTarget({ product, price })
-      return
-    }
-    addToCart(product, price)
-  }
-
-  const incItem = key => setCart(prev => prev.map(i => (i.cartKey || i.id) === key ? { ...i, quantity: i.quantity + 1 } : i))
-  const decItem = key => setCart(prev => {
-    const it = prev.find(i => (i.cartKey || i.id) === key)
-    if (it?.quantity <= 1) return prev.filter(i => (i.cartKey || i.id) !== key)
-    return prev.map(i => (i.cartKey || i.id) === key ? { ...i, quantity: i.quantity - 1 } : i)
-  })
-
-  const subtotal       = cart.reduce((s, i) => s + i.price * i.quantity, 0)
-  const dv             = parseFloat(discountVal) || 0
-  const discountAmount = isAdmin && dv > 0 ? (discountType === 'percent' ? Math.min(subtotal, subtotal * dv / 100) : Math.min(subtotal, dv)) : 0
-  const afterDiscount  = subtotal - discountAmount
-  const tax            = isTaxEnabled ? afterDiscount * 0.14 : 0
-  const total          = afterDiscount + tax
-
-  // مفتاح localStorage لآخر حاجة اتبعتت للباريستا لكل طاولة
-  const baristaKey = (tableId) => `erp_barista_${currentUser?.cafeId || 'x'}_${tableId}`
-
-  const handlePay = () => {
-    if (!cart.length) return
-    if (currentUser?.role === 'cashier' && !activeShift) { alert('افتح شيفت أولاً'); return }
-    // لما الطاولة تتدفع، امسح baseline الباريستا
-    if (activeTable) try { localStorage.removeItem(baristaKey(activeTable.id)) } catch {}
-    const order = placeOrder(cart, { orderType, tableId: activeTable?.id, tableName: activeTable?.name, shiftId: activeShift?.id, cashierName: currentUser?.displayName, discountType, discountValue: discountAmount > 0 ? dv : 0 })
-    setLastOrder(order)
-    setCart([]); setActiveTable(null); setDiscountVal(''); setCartOpen(false)
-  }
-
-  const handleHold = () => {
-    if (!activeTable || !cart.length) return
-
-    // اقرأ آخر حاجة اتبعتت للباريستا من localStorage
-    let lastSent = []
-    try { lastSent = JSON.parse(localStorage.getItem(baristaKey(activeTable.id)) || '[]') } catch {}
-
-    // الأصناف الجديدة = الفرق بين السلة الحالية وآخر طباعة
-    const newItems = cart.flatMap(item => {
-      const key      = item.cartKey || item.id
-      const prev     = lastSent.find(i => (i.cartKey || i.id) === key)
-      const addedQty = item.quantity - (prev?.quantity || 0)
-      return addedQty > 0 ? [{ ...item, quantity: addedQty }] : []
-    })
-
-    // احفظ السلة الحالية كـ baseline جديد قبل الطباعة
-    try { localStorage.setItem(baristaKey(activeTable.id), JSON.stringify(cart)) } catch {}
-
-    holdTable(activeTable.id, cart)
-
-    if (newItems.length > 0) printBaristaTicket({ items: newItems, tableName: activeTable.name })
-
-    setCart([]); setActiveTable(null); setCartOpen(false)
-  }
-
-  const selectTable = (t) => {
-    setActiveTable(t)
-    const saved = activeTableOrders[t.id]
-    setCart((Array.isArray(saved) ? saved : []).map(item => ({ ...item, cartKey: item.cartKey || item.id })))
-  }
-
-  const TABS = [
-    { id: 'takeaway',    label: 'تيك أواي',  icon: <ShoppingCart size={14} /> },
-    { id: 'dine_in',     label: 'صالة',       icon: <Armchair size={14} /> },
-    { id: 'playstation', label: 'بلايستيشن',  icon: <Gamepad2 size={14} />, badge: activePsCount },
-    { id: 'offers',      label: 'العروض',      icon: <Tag size={14} />,      badge: activeOffersCount },
-  ]
-
-  const CartPanel = () => (
+// ─── CartPanel — defined OUTSIDE POSPage to prevent remount on every render ─
+function CartPanel({
+  cart, mode, activeTable, isAdmin, subtotal, discountAmount, discountType,
+  discountVal, setDiscountType, setDiscountVal, isTaxEnabled, tax, total,
+  handleHold, handlePay, setSplitCount, setSplitOpen, incItem, decItem,
+  setCart, setActiveTable, setCartOpen
+}) {
+  return (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 flex justify-between items-center shrink-0">
         <h3 className="font-black text-lg flex items-center gap-2 text-slate-800 dark:text-white">
@@ -397,6 +281,123 @@ export default function POSPage() {
       </div>
     </div>
   )
+}
+
+export default function POSPage() {
+  const { products, offers, tables, isTaxEnabled, activeTableOrders, currentUser, placeOrder, holdTable } = useStore()
+  const activeShift = useStore(s => s.shifts.find(sh => sh.status === 'open' && sh.cashierName === s.currentUser?.displayName))
+
+  const [mode,          setMode]          = useState('takeaway')
+  const [activeTable,   setActiveTable]   = useState(null)
+  const [cart,          setCart]          = useState([])
+  const [catFilter,     setCatFilter]     = useState('all')
+  const [discountType,  setDiscountType]  = useState('percent')
+  const [discountVal,   setDiscountVal]   = useState('')
+  const [lastOrder,     setLastOrder]     = useState(null)
+  const [cartOpen,      setCartOpen]      = useState(false)
+
+  // Options modal
+  const [optionsTarget, setOptionsTarget] = useState(null) // { product, price }
+  const [pendingOpts,   setPendingOpts]   = useState({})
+
+  // Bill split
+  const [splitOpen,  setSplitOpen]  = useState(false)
+  const [splitCount, setSplitCount] = useState(2)
+
+  const isAdmin       = currentUser?.role === 'admin'
+  const isProductMode = mode === 'takeaway' || mode === 'dine_in'
+  const orderType     = mode === 'dine_in' ? 'dine_in' : 'takeaway'
+
+  const categories       = useMemo(() => [...new Set(products.map(p => p.category).filter(Boolean))], [products])
+  const filteredProducts = useMemo(() => catFilter === 'all' ? products : products.filter(p => p.category === catFilter), [products, catFilter])
+
+  const activeOffersCount = useMemo(() => {
+    const today = new Date()
+    return offers.filter(o => o.isActive && (!o.startDate || today >= new Date(o.startDate)) && (!o.endDate || today <= new Date(o.endDate))).length
+  }, [offers])
+  const activePsCount = useStore(s => s.psSessions.filter(ss => ss.status === 'active').length)
+
+  // ── Add to cart (with or without options) ────────────────
+  const addToCart = (product, price, selectedOpts = {}) => {
+    if (mode === 'dine_in' && !activeTable) { alert('اختر طاولة أولاً'); return }
+    const key = makeCartKey(product.id, selectedOpts)
+    setCart(prev => {
+      const ex = prev.find(i => (i.cartKey || i.id) === key)
+      if (ex) return prev.map(i => (i.cartKey || i.id) === key ? { ...i, quantity: i.quantity + 1 } : i)
+      return [...prev, {
+        ...product, price, quantity: 1,
+        cartKey: key,
+        selectedOptions: Object.keys(selectedOpts).length ? selectedOpts : undefined
+      }]
+    })
+  }
+
+  const addItem = (product, price) => {
+    if (product.options?.length > 0) {
+      setPendingOpts({})
+      setOptionsTarget({ product, price })
+      return
+    }
+    addToCart(product, price)
+  }
+
+  const incItem = key => setCart(prev => prev.map(i => (i.cartKey || i.id) === key ? { ...i, quantity: i.quantity + 1 } : i))
+  const decItem = key => setCart(prev => {
+    const it = prev.find(i => (i.cartKey || i.id) === key)
+    if (it?.quantity <= 1) return prev.filter(i => (i.cartKey || i.id) !== key)
+    return prev.map(i => (i.cartKey || i.id) === key ? { ...i, quantity: i.quantity - 1 } : i)
+  })
+
+  const subtotal       = cart.reduce((s, i) => s + i.price * i.quantity, 0)
+  const dv             = parseFloat(discountVal) || 0
+  const discountAmount = isAdmin && dv > 0 ? (discountType === 'percent' ? Math.min(subtotal, subtotal * dv / 100) : Math.min(subtotal, dv)) : 0
+  const afterDiscount  = subtotal - discountAmount
+  const tax            = isTaxEnabled ? afterDiscount * 0.14 : 0
+  const total          = afterDiscount + tax
+
+  const handlePay = () => {
+    if (!cart.length) return
+    if (currentUser?.role === 'cashier' && !activeShift) { alert('افتح شيفت أولاً'); return }
+    const order = placeOrder(cart, { orderType, tableId: activeTable?.id, tableName: activeTable?.name, shiftId: activeShift?.id, cashierName: currentUser?.displayName, discountType, discountValue: discountAmount > 0 ? dv : 0 })
+    setLastOrder(order)
+    setCart([]); setActiveTable(null); setDiscountVal(''); setCartOpen(false)
+  }
+
+  const handleHold = () => {
+    if (!activeTable || !cart.length) return
+
+    // الأصناف الجديدة = اللي مفيهاش علامة sentToBarista (لم تُرسل للباريستا بعد)
+    const newItems = cart.filter(item => !item.sentToBarista)
+
+    // احفظ السلة مع تعليم كل الأصناف كـ "تم الإرسال للباريستا"
+    const markedCart = cart.map(item => ({ ...item, sentToBarista: true }))
+
+    holdTable(activeTable.id, markedCart)
+
+    if (newItems.length > 0) printBaristaTicket({ items: newItems, tableName: activeTable.name })
+
+    setCart([]); setActiveTable(null); setCartOpen(false)
+  }
+
+  const selectTable = (t) => {
+    setActiveTable(t)
+    const saved = activeTableOrders[t.id]
+    setCart((Array.isArray(saved) ? saved : []).map(item => ({ ...item, cartKey: item.cartKey || item.id })))
+  }
+
+  const TABS = [
+    { id: 'takeaway',    label: 'تيك أواي',  icon: <ShoppingCart size={14} /> },
+    { id: 'dine_in',     label: 'صالة',       icon: <Armchair size={14} /> },
+    { id: 'playstation', label: 'بلايستيشن',  icon: <Gamepad2 size={14} />, badge: activePsCount },
+    { id: 'offers',      label: 'العروض',      icon: <Tag size={14} />,      badge: activeOffersCount },
+  ]
+
+  const cartPanelProps = {
+    cart, mode, activeTable, isAdmin, subtotal, discountAmount, discountType,
+    discountVal, setDiscountType, setDiscountVal, isTaxEnabled, tax, total,
+    handleHold, handlePay, setSplitCount, setSplitOpen, incItem, decItem,
+    setCart, setActiveTable, setCartOpen
+  }
 
   return (
     <div className="flex flex-col lg:flex-row h-full gap-4 p-3 md:p-5 overflow-hidden relative">
@@ -473,7 +474,7 @@ export default function POSPage() {
 
       {/* Desktop cart */}
       <div className="hidden lg:flex w-[340px] xl:w-[380px] bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex-col shrink-0">
-        <CartPanel />
+        <CartPanel {...cartPanelProps} />
       </div>
 
       {/* Mobile cart drawer */}
@@ -481,7 +482,7 @@ export default function POSPage() {
         <>
           <div className="fixed inset-0 bg-black/60 z-30 lg:hidden backdrop-blur-sm" onClick={() => setCartOpen(false)} />
           <div className="fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-slate-800 rounded-t-3xl border border-slate-200 dark:border-slate-700 flex flex-col h-[85vh] lg:hidden">
-            <CartPanel />
+            <CartPanel {...cartPanelProps} />
           </div>
         </>
       )}
