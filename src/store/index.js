@@ -85,25 +85,23 @@ export const useStore = create((set, get) => ({
     isTaxEnabled: false, isServiceEnabled: false
   }),
 
-  // ── Sync — debounced 300ms ────────────────────────────────
+  // ── Sync ─────────────────────────────────────────────────
   _syncTimer:  null,
   _syncBuffer: {},
 
   sync: (partial, { immediate = false } = {}) => {
     const { currentUser } = get()
     if (!currentUser?.cafeId) return
-
     const cafeId = currentUser.cafeId
-    set(s => ({ _syncBuffer: { ...s._syncBuffer, ...partial }, syncStatus: 'saving' }))
 
-    if (get()._syncTimer) clearTimeout(get()._syncTimer)
+    // ── immediate path: no timer — save fires NOW as a Promise ──
+    // (setTimeout(0) would allow stale Firestore snapshots to fire first
+    //  and restore deleted tables before the write reaches Firestore)
+    if (immediate) {
+      if (get()._syncTimer) clearTimeout(get()._syncTimer)
+      const buffer = { ...get()._syncBuffer, ...partial }
+      set({ _syncBuffer: {}, _syncTimer: null, syncStatus: 'saving' })
 
-    const timer = setTimeout(async () => {
-      const buffer = get()._syncBuffer
-      if (!Object.keys(buffer).length) return
-      set({ _syncBuffer: {}, _syncTimer: null })
-
-      // حفظ فوري في localStorage (يشتغل حتى أوفلاين)
       const s = get()
       saveLocal(cafeId, {
         products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
@@ -112,17 +110,50 @@ export const useStore = create((set, get) => ({
         psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled, isServiceEnabled: s.isServiceEnabled
       })
 
-      // محاولة مع retry مرة واحدة
-      const doSave = async () => {
-        await saveCafe(cafeId, buffer)
-      }
+      saveCafe(cafeId, buffer)
+        .then(() => {
+          set({ syncStatus: 'saved' })
+          setTimeout(() => set(s => s.syncStatus === 'saved' ? { syncStatus: 'idle' } : {}), 2000)
+        })
+        .catch(() => {
+          setTimeout(() => {
+            saveCafe(cafeId, buffer)
+              .then(() => {
+                set({ syncStatus: 'saved' })
+                setTimeout(() => set(s => s.syncStatus === 'saved' ? { syncStatus: 'idle' } : {}), 2000)
+              })
+              .catch(e => {
+                console.error('Sync failed:', e.code, e.message)
+                set({ syncStatus: 'error' })
+              })
+          }, 1000)
+        })
+      return
+    }
 
+    // ── debounced path: 300ms for non-critical updates ───────
+    set(s => ({ _syncBuffer: { ...s._syncBuffer, ...partial }, syncStatus: 'saving' }))
+    if (get()._syncTimer) clearTimeout(get()._syncTimer)
+
+    const timer = setTimeout(async () => {
+      const buffer = get()._syncBuffer
+      if (!Object.keys(buffer).length) return
+      set({ _syncBuffer: {}, _syncTimer: null })
+
+      const s = get()
+      saveLocal(cafeId, {
+        products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
+        expenses: s.expenses, tables: s.tables, shifts: s.shifts, orders: s.orders,
+        activeTableOrders: s.activeTableOrders, offers: s.offers, psDevices: s.psDevices,
+        psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled, isServiceEnabled: s.isServiceEnabled
+      })
+
+      const doSave = async () => { await saveCafe(cafeId, buffer) }
       try {
         await doSave()
         set({ syncStatus: 'saved' })
         setTimeout(() => set(s => s.syncStatus === 'saved' ? { syncStatus: 'idle' } : {}), 2000)
       } catch (e1) {
-        // retry بعد ثانية واحدة
         setTimeout(async () => {
           try {
             await doSave()
@@ -134,7 +165,7 @@ export const useStore = create((set, get) => ({
           }
         }, 1000)
       }
-    }, immediate ? 0 : 300)
+    }, 300)
 
     set({ _syncTimer: timer })
   },
