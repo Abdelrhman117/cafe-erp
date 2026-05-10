@@ -62,27 +62,43 @@ export const useStore = create((set, get) => ({
   isTaxEnabled:      false,
   isServiceEnabled:  false,
 
-  setCafeData: (data) => set({
-    products:          data.products?.length    ? data.products          : DEFAULT_PRODUCTS,
-    rawMaterials:      data.rawMaterials?.length ? data.rawMaterials     : DEFAULT_RAW_MATERIALS,
-    employees:         data.employees           || [],
-    expenses:          data.expenses            || [],
-    tables:            data.tables              || [],
-    shifts:            data.shifts              || [],
-    orders:            data.orders              || [],
-    activeTableOrders: data.activeTableOrders   || {},
-    offers:            data.offers              || [],
-    psDevices:         data.psDevices           || [],
-    psSessions:        data.psSessions          || [],
-    isTaxEnabled:      data.isTaxEnabled        ?? false,
-    isServiceEnabled:  data.isServiceEnabled    ?? false
-  }),
+  // ── Snapshot guard: prevents stale snapshots from restoring deleted tables ──
+  // { [tableId]: timestamp } — entries expire after 60s
+  _pendingTableDeletes: {},
+
+  setCafeData: (data) => {
+    const now     = Date.now()
+    const pending = get()._pendingTableDeletes || {}
+    const activePending = Object.fromEntries(
+      Object.entries(pending).filter(([, ts]) => now - ts < 60000)
+    )
+    const rawATO = data.activeTableOrders || {}
+    const safeATO = Object.fromEntries(
+      Object.entries(rawATO).filter(([id]) => !activePending[id])
+    )
+    set({
+      products:             data.products?.length    ? data.products          : DEFAULT_PRODUCTS,
+      rawMaterials:         data.rawMaterials?.length ? data.rawMaterials     : DEFAULT_RAW_MATERIALS,
+      employees:            data.employees           || [],
+      expenses:             data.expenses            || [],
+      tables:               data.tables              || [],
+      shifts:               data.shifts              || [],
+      orders:               data.orders              || [],
+      activeTableOrders:    safeATO,
+      offers:               data.offers              || [],
+      psDevices:            data.psDevices           || [],
+      psSessions:           data.psSessions          || [],
+      isTaxEnabled:         data.isTaxEnabled        ?? false,
+      isServiceEnabled:     data.isServiceEnabled    ?? false,
+      _pendingTableDeletes: activePending,
+    })
+  },
 
   resetCafeData: () => set({
     products: DEFAULT_PRODUCTS, rawMaterials: DEFAULT_RAW_MATERIALS, employees: [],
     expenses: [], tables: [], shifts: [], orders: [],
     activeTableOrders: {}, offers: [], psDevices: [], psSessions: [],
-    isTaxEnabled: false, isServiceEnabled: false
+    isTaxEnabled: false, isServiceEnabled: false, _pendingTableDeletes: {}
   }),
 
   // ── Sync ─────────────────────────────────────────────────
@@ -341,7 +357,12 @@ export const useStore = create((set, get) => ({
     let newATO = { ...activeTableOrders }
     if (tableId) delete newATO[tableId]
 
-    set({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO })
+    // Mark tableId as locally-deleted so stale Firestore snapshots can't restore it
+    const newPending = tableId
+      ? { ...get()._pendingTableDeletes, [tableId]: Date.now() }
+      : get()._pendingTableDeletes
+
+    set({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO, _pendingTableDeletes: newPending })
     // immediate: true لضمان حذف الطاولة فوراً دون تأخير 300ms
     get().sync({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO }, { immediate: true })
     return { ...order, lowStockWarnings }
@@ -351,6 +372,11 @@ export const useStore = create((set, get) => ({
     const next = { ...get().activeTableOrders, [tableId]: cart }
     set({ activeTableOrders: next })
     get().sync({ activeTableOrders: next }, { immediate: true })
+  },
+
+  clearAllTableOrders: () => {
+    set({ activeTableOrders: {} })
+    get().sync({ activeTableOrders: {} }, { immediate: true })
   },
 
   // ── PlayStation ───────────────────────────────────────────
