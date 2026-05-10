@@ -60,6 +60,7 @@ export const useStore = create((set, get) => ({
   psDevices:         [],
   psSessions:        [],
   isTaxEnabled:      false,
+  isServiceEnabled:  false,
 
   setCafeData: (data) => set({
     products:          data.products?.length    ? data.products          : DEFAULT_PRODUCTS,
@@ -73,14 +74,15 @@ export const useStore = create((set, get) => ({
     offers:            data.offers              || [],
     psDevices:         data.psDevices           || [],
     psSessions:        data.psSessions          || [],
-    isTaxEnabled:      data.isTaxEnabled        ?? false
+    isTaxEnabled:      data.isTaxEnabled        ?? false,
+    isServiceEnabled:  data.isServiceEnabled    ?? false
   }),
 
   resetCafeData: () => set({
     products: DEFAULT_PRODUCTS, rawMaterials: DEFAULT_RAW_MATERIALS, employees: [],
     expenses: [], tables: [], shifts: [], orders: [],
     activeTableOrders: {}, offers: [], psDevices: [], psSessions: [],
-    isTaxEnabled: false
+    isTaxEnabled: false, isServiceEnabled: false
   }),
 
   // ── Sync — debounced 300ms ────────────────────────────────
@@ -107,7 +109,7 @@ export const useStore = create((set, get) => ({
         products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
         expenses: s.expenses, tables: s.tables, shifts: s.shifts, orders: s.orders,
         activeTableOrders: s.activeTableOrders, offers: s.offers, psDevices: s.psDevices,
-        psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled
+        psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled, isServiceEnabled: s.isServiceEnabled
       })
 
       // محاولة مع retry مرة واحدة
@@ -231,6 +233,12 @@ export const useStore = create((set, get) => ({
     get().sync({ isTaxEnabled: next })
   },
 
+  toggleService: () => {
+    const next = !get().isServiceEnabled
+    set({ isServiceEnabled: next })
+    get().sync({ isServiceEnabled: next })
+  },
+
   // ── Shifts ────────────────────────────────────────────────
   openShift: (cashierName, startingCash) => {
     const shift = { id: crypto.randomUUID(), cashierName, startingCash, startTime: new Date().toLocaleString('ar-EG'), timestamp: Date.now(), status: 'open' }
@@ -252,11 +260,11 @@ export const useStore = create((set, get) => ({
 
   // ── Orders / POS ─────────────────────────────────────────
   placeOrder: (cart, options) => {
-    const { orders, rawMaterials, products, activeTableOrders, isTaxEnabled } = get()
+    const { orders, rawMaterials, products, activeTableOrders, isTaxEnabled, isServiceEnabled } = get()
     const { orderType, tableId, shiftId, cashierName, discountType, discountValue, tableName, note } = options
-    const TAX_RATE = 0.14
 
-    // حساب المجاميع
+    // حساب المجاميع بالترتيب الصحيح:
+    // subtotal → خصم → خدمة 10% → ضريبة 14%
     const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0)
     let discountAmount = 0
     if (discountValue > 0) {
@@ -264,9 +272,11 @@ export const useStore = create((set, get) => ({
         ? Math.min(subtotal, subtotal * discountValue / 100)
         : Math.min(subtotal, discountValue)
     }
-    const afterDiscount = subtotal - discountAmount
-    const tax   = isTaxEnabled ? afterDiscount * TAX_RATE : 0
-    const total = afterDiscount + tax
+    const afterDiscount  = subtotal - discountAmount
+    const serviceCharge  = isServiceEnabled ? afterDiscount * 0.10 : 0
+    const afterService   = afterDiscount + serviceCharge
+    const tax            = isTaxEnabled ? afterService * 0.14 : 0
+    const total          = afterService + tax
 
     // خصم من المخزون + تجميع تحذيرات النفاد
     const newMaterials = rawMaterials.map(rm => ({ ...rm }))
@@ -288,7 +298,7 @@ export const useStore = create((set, get) => ({
     const order = {
       id: crypto.randomUUID(),
       items: cart, subtotal, discountAmount, discountType, discountValue,
-      tax, total, shiftId, cashierName,
+      serviceCharge, tax, total, shiftId, cashierName,
       note: orderType === 'takeaway' ? 'تيك أواي' : `صالة — ${tableName}`,
       orderNote: note || '',
       date: new Date().toLocaleString('ar-EG'),

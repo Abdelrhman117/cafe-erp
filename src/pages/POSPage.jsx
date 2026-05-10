@@ -197,7 +197,8 @@ function makeCartKey(productId, selectedOpts = {}) {
 // ─── CartPanel — defined OUTSIDE POSPage to prevent remount on every render ─
 function CartPanel({
   cart, mode, activeTable, isAdmin, subtotal, discountAmount, discountType,
-  discountVal, setDiscountType, setDiscountVal, isTaxEnabled, tax, total,
+  discountVal, setDiscountType, setDiscountVal, isServiceEnabled, serviceCharge,
+  isTaxEnabled, tax, total,
   handleHold, handlePay, setSplitCount, setSplitOpen, incItem, decItem,
   setCart, setActiveTable, setCartOpen, orderNote, setOrderNote
 }) {
@@ -261,7 +262,8 @@ function CartPanel({
         <div className="space-y-1 mb-4 text-sm font-bold text-slate-500">
           <div className="flex justify-between"><span>المجموع</span><span>{subtotal.toFixed(2)} ج</span></div>
           {discountAmount > 0 && <div className="flex justify-between text-emerald-600 font-black"><span>خصم</span><span>-{discountAmount.toFixed(2)} ج</span></div>}
-          {isTaxEnabled && <div className="flex justify-between"><span>ضريبة 14%</span><span>{tax.toFixed(2)} ج</span></div>}
+          {isServiceEnabled && <div className="flex justify-between text-indigo-500"><span>خدمة 10%</span><span>+{serviceCharge.toFixed(2)} ج</span></div>}
+          {isTaxEnabled && <div className="flex justify-between"><span>ضريبة 14%</span><span>+{tax.toFixed(2)} ج</span></div>}
           <div className="flex justify-between font-black text-2xl text-slate-800 dark:text-white pt-2 border-t border-slate-200 dark:border-slate-700">
             <span>الإجمالي</span><span className="text-indigo-600 dark:text-indigo-400">{total.toFixed(2)} ج</span>
           </div>
@@ -296,7 +298,7 @@ function CartPanel({
 }
 
 export default function POSPage() {
-  const { products, offers, tables, isTaxEnabled, activeTableOrders, currentUser, placeOrder, holdTable } = useStore()
+  const { products, offers, tables, isTaxEnabled, isServiceEnabled, activeTableOrders, currentUser, placeOrder, holdTable } = useStore()
   const activeShift = useStore(s => s.shifts.find(sh => sh.status === 'open' && sh.cashierName === s.currentUser?.displayName))
 
   const [mode,          setMode]          = useState('takeaway')
@@ -365,8 +367,10 @@ export default function POSPage() {
   const dv             = parseFloat(discountVal) || 0
   const discountAmount = isAdmin && dv > 0 ? (discountType === 'percent' ? Math.min(subtotal, subtotal * dv / 100) : Math.min(subtotal, dv)) : 0
   const afterDiscount  = subtotal - discountAmount
-  const tax            = isTaxEnabled ? afterDiscount * 0.14 : 0
-  const total          = afterDiscount + tax
+  const serviceCharge  = isServiceEnabled ? afterDiscount * 0.10 : 0
+  const afterService   = afterDiscount + serviceCharge
+  const tax            = isTaxEnabled ? afterService * 0.14 : 0
+  const total          = afterService + tax
 
   const handlePay = () => {
     if (!cart.length) return
@@ -407,7 +411,8 @@ export default function POSPage() {
 
   const cartPanelProps = {
     cart, mode, activeTable, isAdmin, subtotal, discountAmount, discountType,
-    discountVal, setDiscountType, setDiscountVal, isTaxEnabled, tax, total,
+    discountVal, setDiscountType, setDiscountVal, isServiceEnabled, serviceCharge,
+    isTaxEnabled, tax, total,
     handleHold, handlePay, setSplitCount, setSplitOpen, incItem, decItem,
     setCart, setActiveTable, setCartOpen, orderNote, setOrderNote
   }
@@ -594,7 +599,8 @@ export default function POSPage() {
             <div className="border-t border-dashed border-slate-300 pt-2 space-y-1 text-sm mb-2">
               <div className="flex justify-between font-bold text-slate-600"><span>المجموع</span><span>{lastOrder.subtotal?.toFixed(2)}</span></div>
               {lastOrder.discountAmount > 0 && <div className="flex justify-between font-black text-emerald-600"><span>خصم</span><span>-{lastOrder.discountAmount.toFixed(2)}</span></div>}
-              {lastOrder.tax > 0 && <div className="flex justify-between font-bold text-slate-600"><span>ضريبة 14%</span><span>{lastOrder.tax.toFixed(2)}</span></div>}
+              {lastOrder.serviceCharge > 0 && <div className="flex justify-between font-bold text-indigo-500"><span>خدمة 10%</span><span>+{lastOrder.serviceCharge.toFixed(2)}</span></div>}
+              {lastOrder.tax > 0 && <div className="flex justify-between font-bold text-slate-600"><span>ضريبة 14%</span><span>+{lastOrder.tax.toFixed(2)}</span></div>}
             </div>
             <div className="flex justify-between font-black text-xl border-t-2 border-slate-800 pt-3"><span>الإجمالي</span><span>{lastOrder.total.toFixed(2)} ج</span></div>
             {lastOrder.orderNote && (
