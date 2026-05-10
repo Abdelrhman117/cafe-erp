@@ -1,17 +1,22 @@
 import { db } from './firebase'
 import { doc, setDoc, onSnapshot } from 'firebase/firestore'
 
+// removes undefined fields that Firestore rejects
+function stripUndefined(obj) {
+  return JSON.parse(JSON.stringify(obj))
+}
+
 // ─── Platform ────────────────────────────────────────────
 export const PLATFORM_DOC  = () => doc(db, 'erp_platform', 'config')
 export const subscribePlatform = (cb, errCb) => onSnapshot(PLATFORM_DOC(), cb, errCb)
 export const savePlatform      = (data) =>
-  setDoc(PLATFORM_DOC(), { ...data, updatedAt: Date.now() }, { merge: true })
+  setDoc(PLATFORM_DOC(), { ...stripUndefined(data), updatedAt: Date.now() }, { merge: true })
 
 // ─── Cafe data ────────────────────────────────────────────
 export const CAFE_DOC      = (cafeId) => doc(db, 'erp_cafes', cafeId)
 export const subscribeCafe = (cafeId, cb, errCb) => onSnapshot(CAFE_DOC(cafeId), cb, errCb)
 export const saveCafe      = (cafeId, data) =>
-  setDoc(CAFE_DOC(cafeId), { ...data, updatedAt: Date.now() }, { merge: true })
+  setDoc(CAFE_DOC(cafeId), { ...stripUndefined(data), updatedAt: Date.now() }, { merge: true })
 
 /*
 ══════════════════════════════════════════════════════════════
@@ -39,32 +44,20 @@ service cloud.firestore {
     }
 
     // ── Platform config ───────────────────────────────────
-    // Read: any signed-in user (admins need tenant list to login)
-    // Write: only non-anonymous users (admins manage their own cashiers)
+    // Read: public — login page needs tenant list BEFORE auth
+    // Write: only non-anonymous users
     match /erp_platform/{doc} {
-      allow read:  if isSignedIn();
+      allow read:  if true;
       allow write: if isNonAnonymous();
     }
 
     // ── Cafe data ─────────────────────────────────────────
-    // Read: any signed-in user
-    // Write: only the admin whose email matches the tenant's adminEmail,
-    //        OR non-anonymous users that are already authenticated
-    //
-    // NOTE: To fully enforce per-cafe isolation (prevent cafe A admin
-    //       writing to cafe B), set a Firebase Custom Claim on login:
-    //         { cafeId: "cafe1" }
-    //       Then use: request.auth.token.cafeId == cafeId
-    //       This requires a Cloud Function or Admin SDK on the server.
-    //       Until then, the app-level check in useFirestore provides
-    //       the primary isolation.
+    // All signed-in users can read and write their cafe data.
+    // Cashiers are anonymous but still signed-in — they need to write
+    // orders, update inventory, and manage tables.
     match /erp_cafes/{cafeId} {
       allow read:  if isSignedIn();
-      allow write: if isNonAnonymous() ||
-        (isSignedIn() &&
-         get(/databases/$(database)/documents/erp_platform/config)
-           .data.tenants
-           .hasAny([{id: cafeId, adminEmail: request.auth.token.email}]));
+      allow write: if isSignedIn();
     }
 
   }

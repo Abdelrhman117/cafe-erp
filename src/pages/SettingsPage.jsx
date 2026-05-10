@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { Settings, Upload, ImageIcon, Coffee, RefreshCw, Monitor,
-         CheckCircle, Palette, Type, Download } from 'lucide-react'
+         CheckCircle, Palette, Type, Download, Trash2 } from 'lucide-react'
 import { useStore } from '../store'
 import { usePWA } from '../hooks/usePWA'
 import { Btn, Input } from '../components/UI'
@@ -32,7 +32,7 @@ function resizeImage(base64, maxSize = 256) {
 }
 
 export default function SettingsPage() {
-  const { platform, savePlatformField, currentUser } = useStore()
+  const { platform, savePlatformField, currentUser, clearAllTableOrders, activeTableOrders } = useStore()
   const { canInstall, install, isInstalled, isIOS }  = usePWA()
 
   const [appName,    setAppName]    = useState(platform?.appName    || '')
@@ -188,6 +188,30 @@ export default function SettingsPage() {
            'حفظ الإعدادات'}
         </Btn>
       </form>
+
+      {/* ── Danger Zone: Clear Stuck Tables ──────────────── */}
+      {currentUser?.role === 'admin' && (
+        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-rose-200 dark:border-rose-900 p-6 shadow-sm space-y-4">
+          <h3 className="font-black text-lg text-rose-600 dark:text-rose-400 flex items-center gap-2">
+            <Trash2 size={18} /> مسح بيانات الطاولات العالقة
+          </h3>
+          <p className="text-sm font-bold text-slate-600 dark:text-slate-400">
+            إذا ظهرت طاولات محجوزة بعد الدفع، اضغط هنا لمسح جميع الطلبات المعلقة على الطاولات وإعادتها لحالة "فاضية".
+          </p>
+          <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-900 rounded-xl">
+            <span className="text-sm font-bold text-slate-500">طاولات عليها طلبات معلقة:</span>
+            <span className="font-black text-rose-600 text-lg">{Object.keys(activeTableOrders).length}</span>
+          </div>
+          <button
+            onClick={() => {
+              if (!window.confirm('مسح جميع الطلبات المعلقة على الطاولات؟')) return
+              clearAllTableOrders()
+            }}
+            className="w-full py-3.5 rounded-2xl font-black text-sm text-white bg-rose-600 hover:bg-rose-700 transition-colors flex items-center justify-center gap-2">
+            <Trash2 size={16} /> مسح كل الطاولات العالقة
+          </button>
+        </div>
+      )}
 
       {/* ── PWA Install Section ───────────────────────────── */}
       <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 p-6 shadow-sm space-y-4">

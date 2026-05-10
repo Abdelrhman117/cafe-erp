@@ -127,9 +127,11 @@ export function printReceipt({ order, cafeName, cashierName }) {
     <div class="sep"></div>
     <div class="row"><span>المجموع</span><span>${order.subtotal?.toFixed(2)} ج</span></div>
     ${order.discountAmount > 0 ? `<div class="row" style="color:#16a34a"><span>خصم</span><span>-${order.discountAmount.toFixed(2)} ج</span></div>` : ''}
-    ${order.tax > 0 ? `<div class="row"><span>ضريبة 14%</span><span>${order.tax.toFixed(2)} ج</span></div>` : ''}
+    ${order.serviceCharge > 0 ? `<div class="row" style="color:#4f46e5"><span>خدمة 10%</span><span>+${order.serviceCharge.toFixed(2)} ج</span></div>` : ''}
+    ${order.tax > 0 ? `<div class="row"><span>ضريبة 14%</span><span>+${order.tax.toFixed(2)} ج</span></div>` : ''}
     <div class="sep"></div>
     <div class="row total"><span>الإجمالي</span><span>${order.total.toFixed(2)} ج</span></div>
+    ${order.orderNote ? `<div class="sep"></div><div style="background:#fef3c7;border-radius:6px;padding:6px 8px;font-size:10px;font-weight:700;color:#92400e">📝 ${order.orderNote}</div>` : ''}
     <div class="sep" style="margin-top:12px"></div>
     <div class="center" style="font-size:10px;color:#666">الكاشير: ${cashierName}</div>
     <div class="center" style="font-size:10px;color:#666;margin-top:4px">شكراً لزيارتكم 🌟</div>
@@ -138,7 +140,7 @@ export function printReceipt({ order, cafeName, cashierName }) {
 }
 
 // ─── تذكرة الباريستا ──────────────────────────────────────
-export function printBaristaTicket({ items, tableName }) {
+export function printBaristaTicket({ items, tableName, note }) {
   const time = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })
   const rows = items.map(i => {
     const optsStr = i.selectedOptions && Object.keys(i.selectedOptions).length > 0
@@ -146,6 +148,10 @@ export function printBaristaTicket({ items, tableName }) {
       : ''
     return `<div style="margin-bottom:10px"><div style="font-size:16px;font-weight:900">${i.quantity}× ${i.name}</div>${optsStr}</div>`
   }).join('')
+
+  const noteHtml = note
+    ? `<div style="background:#fef3c7;border:2px solid #f59e0b;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:13px;font-weight:900;color:#92400e">📝 ${note}</div>`
+    : ''
 
   printWindow(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
     <style>
@@ -163,6 +169,7 @@ export function printBaristaTicket({ items, tableName }) {
     <div class="sub">${tableName}</div>
     <div class="sub" style="color:#64748b;font-size:11px">${time}</div>
     <div class="sep"></div>
+    ${noteHtml}
     ${rows}
     <div class="sep"></div>
     ${PRINT_SCRIPT}

@@ -194,12 +194,155 @@ function makeCartKey(productId, selectedOpts = {}) {
   return optsKey ? `${productId}__${optsKey}` : productId
 }
 
+// ─── colors for up to 8 persons ──────────────────────────
+const SPLIT_COLORS = ['#4f46e5','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#ec4899']
+
+// ─── SplitModal — item-based bill splitting ───────────────
+function SplitModal({ cart, splitCount, setSplitCount, isServiceEnabled, isTaxEnabled, cafeName, cashierName, activeTable, onClose, onPayAll }) {
+  const [assignments, setAssignments] = useState(() => {
+    const init = {}
+    cart.forEach(item => { init[item.cartKey || item.id] = 0 })
+    return init
+  })
+
+  useEffect(() => {
+    setAssignments(prev => {
+      const next = { ...prev }
+      Object.keys(next).forEach(k => { if (next[k] >= splitCount) next[k] = 0 })
+      return next
+    })
+  }, [splitCount])
+
+  const persons       = Array.from({ length: splitCount }, (_, i) => i)
+  const getItems      = (idx) => cart.filter(item => (assignments[item.cartKey || item.id] ?? 0) === idx)
+  const calcBill      = (items) => {
+    const sub = items.reduce((s, i) => s + i.price * i.quantity, 0)
+    const svc = isServiceEnabled ? +(sub * 0.10).toFixed(2) : 0
+    const tax = isTaxEnabled     ? +((sub + svc) * 0.14).toFixed(2) : 0
+    return { subtotal: sub, serviceCharge: svc, tax, total: +(sub + svc + tax).toFixed(2) }
+  }
+
+  const printPerson = (idx) => {
+    const items = getItems(idx)
+    if (!items.length) return
+    const bill = calcBill(items)
+    printReceipt({
+      order: {
+        id: crypto.randomUUID(), items,
+        subtotal: bill.subtotal, serviceCharge: bill.serviceCharge,
+        tax: bill.tax, total: bill.total, discountAmount: 0,
+        cashierName: cashierName || '',
+        date: new Date().toLocaleString('ar-EG'),
+        note: activeTable ? `صالة — ${activeTable.name}` : 'تيك أواي',
+        orderNote: '',
+      },
+      cafeName: cafeName || '', cashierName: cashierName || '',
+    })
+  }
+
+  return (
+    <Modal title="تقسيم الحساب بالأصناف" onClose={onClose} size="lg">
+      <div className="space-y-4">
+
+        {/* عدد الأشخاص */}
+        <div className="flex items-center justify-center gap-4">
+          <button onClick={() => setSplitCount(c => Math.max(2, c - 1))}
+            className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-700 font-black text-xl text-slate-700 dark:text-white hover:bg-slate-200 transition-colors">−</button>
+          <span className="text-base font-black text-slate-800 dark:text-white">{splitCount} أشخاص</span>
+          <button onClick={() => setSplitCount(c => Math.min(8, c + 1))}
+            className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-700 font-black text-xl text-slate-700 dark:text-white hover:bg-slate-200 transition-colors">+</button>
+        </div>
+
+        {/* توزيع الأصناف على الأشخاص */}
+        <div className="space-y-1.5 max-h-44 overflow-y-auto custom-scrollbar pr-0.5">
+          <p className="text-[11px] font-black text-slate-400 mb-2">اضغط رقم الشخص على كل صنف:</p>
+          {cart.map(item => {
+            const key      = item.cartKey || item.id
+            const assigned = assignments[key] ?? 0
+            return (
+              <div key={key} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700/50 px-3 py-2 rounded-xl border border-slate-100 dark:border-slate-600">
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-xs text-slate-800 dark:text-white truncate">{item.quantity}× {item.name}</p>
+                  <p className="text-[10px] font-black text-indigo-500">{(item.price * item.quantity).toFixed(2)} ج</p>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  {persons.map(idx => (
+                    <button key={idx}
+                      onClick={() => setAssignments(prev => ({ ...prev, [key]: idx }))}
+                      style={assigned === idx ? { backgroundColor: SPLIT_COLORS[idx] } : undefined}
+                      className={`w-7 h-7 rounded-lg text-xs font-black transition-all
+                        ${assigned === idx ? 'text-white shadow-sm' : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-300'}`}>
+                      {idx + 1}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* فاتورة كل شخص */}
+        <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar pr-0.5">
+          {persons.map(idx => {
+            const items = getItems(idx)
+            const bill  = calcBill(items)
+            return (
+              <div key={idx} className="rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <div className="flex justify-between items-center px-3 py-2.5"
+                  style={{ backgroundColor: SPLIT_COLORS[idx] + '18' }}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-white text-xs font-black px-2.5 py-0.5 rounded-lg"
+                      style={{ backgroundColor: SPLIT_COLORS[idx] }}>شخص {idx + 1}</span>
+                    {!items.length && <span className="text-xs text-slate-400 font-bold">لا يوجد أصناف</span>}
+                  </div>
+                  <span className="font-black text-base text-slate-800 dark:text-white">{bill.total.toFixed(2)} ج</span>
+                </div>
+                {items.length > 0 && (
+                  <div className="px-3 pt-2 pb-3 bg-white dark:bg-slate-800 space-y-1">
+                    {items.map(i => (
+                      <div key={i.cartKey || i.id} className="flex justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                        <span className="truncate ml-2">{i.quantity}× {i.name}</span>
+                        <span className="shrink-0">{(i.price * i.quantity).toFixed(2)} ج</span>
+                      </div>
+                    ))}
+                    {bill.serviceCharge > 0 && (
+                      <div className="flex justify-between text-[11px] font-bold text-indigo-500 border-t border-slate-100 dark:border-slate-700 pt-1 mt-1">
+                        <span>خدمة 10%</span><span>+{bill.serviceCharge.toFixed(2)} ج</span>
+                      </div>
+                    )}
+                    {bill.tax > 0 && (
+                      <div className="flex justify-between text-[11px] font-bold text-slate-400">
+                        <span>ضريبة 14%</span><span>+{bill.tax.toFixed(2)} ج</span>
+                      </div>
+                    )}
+                    <button onClick={() => printPerson(idx)}
+                      className="w-full mt-2 py-2 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-indigo-400 hover:text-indigo-600 bg-slate-50 dark:bg-slate-700/50 transition-colors">
+                      🖨️ طباعة فاتورة شخص {idx + 1}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        <button onClick={onPayAll}
+          className="w-full py-3.5 rounded-2xl font-black text-sm text-white bg-emerald-600 hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2">
+          <Banknote size={16} /> تم الدفع — إغلاق الترابيزة
+        </button>
+        <Btn className="w-full justify-center py-2.5" onClick={onClose}>إغلاق بدون دفع</Btn>
+      </div>
+    </Modal>
+  )
+}
+
 // ─── CartPanel — defined OUTSIDE POSPage to prevent remount on every render ─
 function CartPanel({
   cart, mode, activeTable, isAdmin, subtotal, discountAmount, discountType,
-  discountVal, setDiscountType, setDiscountVal, isTaxEnabled, tax, total,
+  discountVal, setDiscountType, setDiscountVal, isServiceEnabled, serviceCharge,
+  isTaxEnabled, tax, total,
   handleHold, handlePay, setSplitCount, setSplitOpen, incItem, decItem,
-  setCart, setActiveTable, setCartOpen
+  setCart, setActiveTable, setCartOpen, orderNote, setOrderNote
 }) {
   return (
     <div className="flex flex-col h-full">
@@ -228,6 +371,18 @@ function CartPanel({
         }
       </div>
 
+      {cart.length > 0 && (
+        <div className="px-3 pb-2">
+          <textarea
+            rows={2}
+            value={orderNote}
+            onChange={e => setOrderNote(e.target.value)}
+            placeholder="ملاحظات (سكر، حساسية، طلب خاص...)"
+            className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-200 outline-none resize-none placeholder:text-slate-400 focus:border-indigo-400 transition-colors"
+          />
+        </div>
+      )}
+
       {isAdmin && cart.length > 0 && (
         <div className="px-3 pb-2">
           <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200 dark:border-amber-800">
@@ -249,7 +404,8 @@ function CartPanel({
         <div className="space-y-1 mb-4 text-sm font-bold text-slate-500">
           <div className="flex justify-between"><span>المجموع</span><span>{subtotal.toFixed(2)} ج</span></div>
           {discountAmount > 0 && <div className="flex justify-between text-emerald-600 font-black"><span>خصم</span><span>-{discountAmount.toFixed(2)} ج</span></div>}
-          {isTaxEnabled && <div className="flex justify-between"><span>ضريبة 14%</span><span>{tax.toFixed(2)} ج</span></div>}
+          {isServiceEnabled && <div className="flex justify-between text-indigo-500"><span>خدمة 10%</span><span>+{serviceCharge.toFixed(2)} ج</span></div>}
+          {isTaxEnabled && <div className="flex justify-between"><span>ضريبة 14%</span><span>+{tax.toFixed(2)} ج</span></div>}
           <div className="flex justify-between font-black text-2xl text-slate-800 dark:text-white pt-2 border-t border-slate-200 dark:border-slate-700">
             <span>الإجمالي</span><span className="text-indigo-600 dark:text-indigo-400">{total.toFixed(2)} ج</span>
           </div>
@@ -284,7 +440,7 @@ function CartPanel({
 }
 
 export default function POSPage() {
-  const { products, offers, tables, isTaxEnabled, activeTableOrders, currentUser, placeOrder, holdTable } = useStore()
+  const { products, offers, tables, isTaxEnabled, isServiceEnabled, activeTableOrders, currentUser, placeOrder, holdTable } = useStore()
   const activeShift = useStore(s => s.shifts.find(sh => sh.status === 'open' && sh.cashierName === s.currentUser?.displayName))
 
   const [mode,          setMode]          = useState('takeaway')
@@ -295,6 +451,7 @@ export default function POSPage() {
   const [discountVal,   setDiscountVal]   = useState('')
   const [lastOrder,     setLastOrder]     = useState(null)
   const [cartOpen,      setCartOpen]      = useState(false)
+  const [orderNote,     setOrderNote]     = useState('')
 
   // Options modal
   const [optionsTarget, setOptionsTarget] = useState(null) // { product, price }
@@ -352,15 +509,18 @@ export default function POSPage() {
   const dv             = parseFloat(discountVal) || 0
   const discountAmount = isAdmin && dv > 0 ? (discountType === 'percent' ? Math.min(subtotal, subtotal * dv / 100) : Math.min(subtotal, dv)) : 0
   const afterDiscount  = subtotal - discountAmount
-  const tax            = isTaxEnabled ? afterDiscount * 0.14 : 0
-  const total          = afterDiscount + tax
+  const serviceCharge  = isServiceEnabled ? afterDiscount * 0.10 : 0
+  const afterService   = afterDiscount + serviceCharge
+  const tax            = isTaxEnabled ? afterService * 0.14 : 0
+  const total          = afterService + tax
 
   const handlePay = () => {
     if (!cart.length) return
     if (currentUser?.role === 'cashier' && !activeShift) { alert('افتح شيفت أولاً'); return }
-    const order = placeOrder(cart, { orderType, tableId: activeTable?.id, tableName: activeTable?.name, shiftId: activeShift?.id, cashierName: currentUser?.displayName, discountType, discountValue: discountAmount > 0 ? dv : 0 })
-    setLastOrder(order)
-    setCart([]); setActiveTable(null); setDiscountVal(''); setCartOpen(false)
+    const order = placeOrder(cart, { orderType, tableId: activeTable?.id, tableName: activeTable?.name, shiftId: activeShift?.id, cashierName: currentUser?.displayName, discountType, discountValue: discountAmount > 0 ? dv : 0, note: orderNote })
+    // dine_in: close table immediately — no receipt modal needed
+    if (mode !== 'dine_in') setLastOrder(order)
+    setCart([]); setActiveTable(null); setDiscountVal(''); setOrderNote(''); setCartOpen(false)
   }
 
   const handleHold = () => {
@@ -374,9 +534,9 @@ export default function POSPage() {
 
     holdTable(activeTable.id, markedCart)
 
-    if (newItems.length > 0) printBaristaTicket({ items: newItems, tableName: activeTable.name })
+    if (newItems.length > 0) printBaristaTicket({ items: newItems, tableName: activeTable.name, note: orderNote })
 
-    setCart([]); setActiveTable(null); setCartOpen(false)
+    setCart([]); setActiveTable(null); setOrderNote(''); setCartOpen(false)
   }
 
   const selectTable = (t) => {
@@ -394,9 +554,10 @@ export default function POSPage() {
 
   const cartPanelProps = {
     cart, mode, activeTable, isAdmin, subtotal, discountAmount, discountType,
-    discountVal, setDiscountType, setDiscountVal, isTaxEnabled, tax, total,
+    discountVal, setDiscountType, setDiscountVal, isServiceEnabled, serviceCharge,
+    isTaxEnabled, tax, total,
     handleHold, handlePay, setSplitCount, setSplitOpen, incItem, decItem,
-    setCart, setActiveTable, setCartOpen
+    setCart, setActiveTable, setCartOpen, orderNote, setOrderNote
   }
 
   return (
@@ -526,33 +687,32 @@ export default function POSPage() {
 
       {/* ── Bill split modal ── */}
       {splitOpen && (
-        <Modal title="تقسيم الحساب" onClose={() => setSplitOpen(false)} size="sm">
-          <div className="space-y-6 text-center py-2">
-            <div>
-              <p className="text-slate-500 text-sm font-bold mb-1">إجمالي الفاتورة</p>
-              <p className="text-4xl font-black text-indigo-600 dark:text-indigo-400">{total.toFixed(2)} ج</p>
-            </div>
-            <div>
-              <p className="text-sm font-bold text-slate-600 dark:text-slate-400 mb-4">عدد الأشخاص</p>
-              <div className="flex items-center justify-center gap-5">
-                <button onClick={() => setSplitCount(c => Math.max(2, c - 1))}
-                  className="w-11 h-11 rounded-2xl bg-slate-100 dark:bg-slate-700 font-black text-xl text-slate-700 dark:text-white hover:bg-slate-200 transition-colors">
-                  −
-                </button>
-                <span className="text-3xl font-black w-12 text-center text-slate-800 dark:text-white">{splitCount}</span>
-                <button onClick={() => setSplitCount(c => Math.min(20, c + 1))}
-                  className="w-11 h-11 rounded-2xl bg-slate-100 dark:bg-slate-700 font-black text-xl text-slate-700 dark:text-white hover:bg-slate-200 transition-colors">
-                  +
-                </button>
-              </div>
-            </div>
-            <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-5">
-              <p className="text-slate-500 text-sm font-bold mb-1">نصيب كل شخص</p>
-              <p className="text-4xl font-black text-indigo-600 dark:text-indigo-400">{(total / splitCount).toFixed(2)} ج</p>
-            </div>
-            <Btn className="w-full justify-center py-3.5 text-base" onClick={() => setSplitOpen(false)}>تم</Btn>
-          </div>
-        </Modal>
+        <SplitModal
+          cart={cart}
+          splitCount={splitCount}
+          setSplitCount={setSplitCount}
+          isServiceEnabled={isServiceEnabled}
+          isTaxEnabled={isTaxEnabled}
+          cafeName={currentUser?.cafeName}
+          cashierName={currentUser?.displayName}
+          activeTable={activeTable}
+          onClose={() => setSplitOpen(false)}
+          onPayAll={() => {
+            if (currentUser?.role === 'cashier' && !activeShift) { alert('افتح شيفت أولاً'); return }
+            placeOrder(cart, {
+              orderType: 'dine_in',
+              tableId: activeTable?.id,
+              tableName: activeTable?.name,
+              shiftId: activeShift?.id,
+              cashierName: currentUser?.displayName,
+              discountType,
+              discountValue: discountAmount > 0 ? dv : 0,
+              note: orderNote,
+            })
+            setCart([]); setActiveTable(null); setDiscountVal(''); setOrderNote('')
+            setSplitOpen(false); setCartOpen(false)
+          }}
+        />
       )}
 
       {/* ── Receipt modal ── */}
@@ -581,9 +741,15 @@ export default function POSPage() {
             <div className="border-t border-dashed border-slate-300 pt-2 space-y-1 text-sm mb-2">
               <div className="flex justify-between font-bold text-slate-600"><span>المجموع</span><span>{lastOrder.subtotal?.toFixed(2)}</span></div>
               {lastOrder.discountAmount > 0 && <div className="flex justify-between font-black text-emerald-600"><span>خصم</span><span>-{lastOrder.discountAmount.toFixed(2)}</span></div>}
-              {lastOrder.tax > 0 && <div className="flex justify-between font-bold text-slate-600"><span>ضريبة 14%</span><span>{lastOrder.tax.toFixed(2)}</span></div>}
+              {lastOrder.serviceCharge > 0 && <div className="flex justify-between font-bold text-indigo-500"><span>خدمة 10%</span><span>+{lastOrder.serviceCharge.toFixed(2)}</span></div>}
+              {lastOrder.tax > 0 && <div className="flex justify-between font-bold text-slate-600"><span>ضريبة 14%</span><span>+{lastOrder.tax.toFixed(2)}</span></div>}
             </div>
             <div className="flex justify-between font-black text-xl border-t-2 border-slate-800 pt-3"><span>الإجمالي</span><span>{lastOrder.total.toFixed(2)} ج</span></div>
+            {lastOrder.orderNote && (
+              <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] font-bold text-amber-800 text-right">
+                📝 {lastOrder.orderNote}
+              </div>
+            )}
             {lastOrder.lowStockWarnings?.length > 0 && (
               <div className="mt-3 p-2 bg-amber-50 rounded-xl text-[10px] font-bold text-amber-700 text-right">
                 ⚠️ مخزون منخفض: {lastOrder.lowStockWarnings.join(', ')}

@@ -60,40 +60,97 @@ export const useStore = create((set, get) => ({
   psDevices:         [],
   psSessions:        [],
   isTaxEnabled:      false,
+  isServiceEnabled:  false,
 
-  setCafeData: (data) => set({
-    products:          data.products?.length    ? data.products          : DEFAULT_PRODUCTS,
-    rawMaterials:      data.rawMaterials?.length ? data.rawMaterials     : DEFAULT_RAW_MATERIALS,
-    employees:         data.employees           || [],
-    expenses:          data.expenses            || [],
-    tables:            data.tables              || [],
-    shifts:            data.shifts              || [],
-    orders:            data.orders              || [],
-    activeTableOrders: data.activeTableOrders   || {},
-    offers:            data.offers              || [],
-    psDevices:         data.psDevices           || [],
-    psSessions:        data.psSessions          || [],
-    isTaxEnabled:      data.isTaxEnabled        ?? false
-  }),
+  // ── Snapshot guard: prevents stale snapshots from restoring deleted tables ──
+  // { [tableId]: timestamp } — entries expire after 20s
+  _pendingTableDeletes: {},
+
+  setCafeData: (data) => {
+    const now     = Date.now()
+    const pending = get()._pendingTableDeletes || {}
+    // Keep only entries younger than 20 seconds
+    const activePending = Object.fromEntries(
+      Object.entries(pending).filter(([, ts]) => now - ts < 20000)
+    )
+    // Strip out any tableIds we deleted locally — don't let stale snapshots restore them
+    const rawATO = data.activeTableOrders || {}
+    const safeATO = Object.fromEntries(
+      Object.entries(rawATO).filter(([id]) => !activePending[id])
+    )
+    set({
+      products:             data.products?.length    ? data.products          : DEFAULT_PRODUCTS,
+      rawMaterials:         data.rawMaterials?.length ? data.rawMaterials     : DEFAULT_RAW_MATERIALS,
+      employees:            data.employees           || [],
+      expenses:             data.expenses            || [],
+      tables:               data.tables              || [],
+      shifts:               data.shifts              || [],
+      orders:               data.orders              || [],
+      activeTableOrders:    safeATO,
+      offers:               data.offers              || [],
+      psDevices:            data.psDevices           || [],
+      psSessions:           data.psSessions          || [],
+      isTaxEnabled:         data.isTaxEnabled        ?? false,
+      isServiceEnabled:     data.isServiceEnabled    ?? false,
+      _pendingTableDeletes: activePending,
+    })
+  },
 
   resetCafeData: () => set({
     products: DEFAULT_PRODUCTS, rawMaterials: DEFAULT_RAW_MATERIALS, employees: [],
     expenses: [], tables: [], shifts: [], orders: [],
     activeTableOrders: {}, offers: [], psDevices: [], psSessions: [],
-    isTaxEnabled: false
+    isTaxEnabled: false, isServiceEnabled: false, _pendingTableDeletes: {}
   }),
 
-  // ── Sync — debounced 300ms ────────────────────────────────
+  // ── Sync ─────────────────────────────────────────────────
   _syncTimer:  null,
   _syncBuffer: {},
 
-  sync: (partial) => {
+  sync: (partial, { immediate = false } = {}) => {
     const { currentUser } = get()
     if (!currentUser?.cafeId) return
-
     const cafeId = currentUser.cafeId
-    set(s => ({ _syncBuffer: { ...s._syncBuffer, ...partial }, syncStatus: 'saving' }))
 
+    // ── immediate path: no timer — save fires NOW as a Promise ──
+    // (setTimeout(0) would allow stale Firestore snapshots to fire first
+    //  and restore deleted tables before the write reaches Firestore)
+    if (immediate) {
+      if (get()._syncTimer) clearTimeout(get()._syncTimer)
+      const buffer = { ...get()._syncBuffer, ...partial }
+      set({ _syncBuffer: {}, _syncTimer: null, syncStatus: 'saving' })
+
+      const s = get()
+      saveLocal(cafeId, {
+        products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
+        expenses: s.expenses, tables: s.tables, shifts: s.shifts, orders: s.orders,
+        activeTableOrders: s.activeTableOrders, offers: s.offers, psDevices: s.psDevices,
+        psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled, isServiceEnabled: s.isServiceEnabled
+      })
+
+      saveCafe(cafeId, buffer)
+        .then(() => {
+          set({ syncStatus: 'saved' })
+          setTimeout(() => set(s => s.syncStatus === 'saved' ? { syncStatus: 'idle' } : {}), 2000)
+        })
+        .catch(() => {
+          setTimeout(() => {
+            saveCafe(cafeId, buffer)
+              .then(() => {
+                set({ syncStatus: 'saved' })
+                setTimeout(() => set(s => s.syncStatus === 'saved' ? { syncStatus: 'idle' } : {}), 2000)
+              })
+              .catch(e => {
+                console.error('Sync failed:', e.code, e.message)
+                set({ syncStatus: 'error' })
+              })
+          }, 1000)
+        })
+      return
+    }
+
+    // ── debounced path: 300ms for non-critical updates ───────
+    set(s => ({ _syncBuffer: { ...s._syncBuffer, ...partial }, syncStatus: 'saving' }))
     if (get()._syncTimer) clearTimeout(get()._syncTimer)
 
     const timer = setTimeout(async () => {
@@ -101,26 +158,20 @@ export const useStore = create((set, get) => ({
       if (!Object.keys(buffer).length) return
       set({ _syncBuffer: {}, _syncTimer: null })
 
-      // حفظ فوري في localStorage (يشتغل حتى أوفلاين)
       const s = get()
       saveLocal(cafeId, {
         products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
         expenses: s.expenses, tables: s.tables, shifts: s.shifts, orders: s.orders,
         activeTableOrders: s.activeTableOrders, offers: s.offers, psDevices: s.psDevices,
-        psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled
+        psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled, isServiceEnabled: s.isServiceEnabled
       })
 
-      // محاولة مع retry مرة واحدة
-      const doSave = async () => {
-        await saveCafe(cafeId, buffer)
-      }
-
+      const doSave = async () => { await saveCafe(cafeId, buffer) }
       try {
         await doSave()
         set({ syncStatus: 'saved' })
         setTimeout(() => set(s => s.syncStatus === 'saved' ? { syncStatus: 'idle' } : {}), 2000)
       } catch (e1) {
-        // retry بعد ثانية واحدة
         setTimeout(async () => {
           try {
             await doSave()
@@ -231,6 +282,12 @@ export const useStore = create((set, get) => ({
     get().sync({ isTaxEnabled: next })
   },
 
+  toggleService: () => {
+    const next = !get().isServiceEnabled
+    set({ isServiceEnabled: next })
+    get().sync({ isServiceEnabled: next })
+  },
+
   // ── Shifts ────────────────────────────────────────────────
   openShift: (cashierName, startingCash) => {
     const shift = { id: crypto.randomUUID(), cashierName, startingCash, startTime: new Date().toLocaleString('ar-EG'), timestamp: Date.now(), status: 'open' }
@@ -252,11 +309,11 @@ export const useStore = create((set, get) => ({
 
   // ── Orders / POS ─────────────────────────────────────────
   placeOrder: (cart, options) => {
-    const { orders, rawMaterials, products, activeTableOrders, isTaxEnabled } = get()
-    const { orderType, tableId, shiftId, cashierName, discountType, discountValue, tableName } = options
-    const TAX_RATE = 0.14
+    const { orders, rawMaterials, products, activeTableOrders, isTaxEnabled, isServiceEnabled } = get()
+    const { orderType, tableId, shiftId, cashierName, discountType, discountValue, tableName, note } = options
 
-    // حساب المجاميع
+    // حساب المجاميع بالترتيب الصحيح:
+    // subtotal → خصم → خدمة 10% → ضريبة 14%
     const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0)
     let discountAmount = 0
     if (discountValue > 0) {
@@ -264,9 +321,11 @@ export const useStore = create((set, get) => ({
         ? Math.min(subtotal, subtotal * discountValue / 100)
         : Math.min(subtotal, discountValue)
     }
-    const afterDiscount = subtotal - discountAmount
-    const tax   = isTaxEnabled ? afterDiscount * TAX_RATE : 0
-    const total = afterDiscount + tax
+    const afterDiscount  = subtotal - discountAmount
+    const serviceCharge  = isServiceEnabled ? afterDiscount * 0.10 : 0
+    const afterService   = afterDiscount + serviceCharge
+    const tax            = isTaxEnabled ? afterService * 0.14 : 0
+    const total          = afterService + tax
 
     // خصم من المخزون + تجميع تحذيرات النفاد
     const newMaterials = rawMaterials.map(rm => ({ ...rm }))
@@ -288,25 +347,38 @@ export const useStore = create((set, get) => ({
     const order = {
       id: crypto.randomUUID(),
       items: cart, subtotal, discountAmount, discountType, discountValue,
-      tax, total, shiftId, cashierName,
+      serviceCharge, tax, total, shiftId, cashierName,
       note: orderType === 'takeaway' ? 'تيك أواي' : `صالة — ${tableName}`,
+      orderNote: note || '',
       date: new Date().toLocaleString('ar-EG'),
       timestamp: Date.now()
     }
 
     const newOrders = [...orders, order]
+    // حذف الطاولة من activeTableOrders عند الدفع
     let newATO = { ...activeTableOrders }
-    if (orderType === 'dine_in' && tableId) delete newATO[tableId]
+    if (tableId) delete newATO[tableId]
 
-    set({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO })
-    get().sync({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO })
+    // Mark tableId as locally-deleted so stale Firestore snapshots can't restore it
+    const newPending = tableId
+      ? { ...get()._pendingTableDeletes, [tableId]: Date.now() }
+      : get()._pendingTableDeletes
+
+    set({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO, _pendingTableDeletes: newPending })
+    // immediate: true لضمان حذف الطاولة فوراً دون تأخير 300ms
+    get().sync({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO }, { immediate: true })
     return { ...order, lowStockWarnings }
   },
 
   holdTable: (tableId, cart) => {
     const next = { ...get().activeTableOrders, [tableId]: cart }
     set({ activeTableOrders: next })
-    get().sync({ activeTableOrders: next })
+    get().sync({ activeTableOrders: next }, { immediate: true })
+  },
+
+  clearAllTableOrders: () => {
+    set({ activeTableOrders: {} })
+    get().sync({ activeTableOrders: {} }, { immediate: true })
   },
 
   // ── PlayStation ───────────────────────────────────────────
