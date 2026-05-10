@@ -33,7 +33,7 @@ function AppLogo({ platform, size = 'md' }) {
 }
 
 export default function Sidebar({ currentRoute, onNavigate, onClose }) {
-  const { currentUser, isDarkMode, setIsDarkMode, isTaxEnabled, toggleTax, platform } = useStore()
+  const { currentUser, isDarkMode, setIsDarkMode, isTaxEnabled, toggleTax, isServiceEnabled, toggleService, platform } = useStore()
   const { logout } = useAuth()
   const lowStock = useStore(selectLowStock(50))
   const { expired } = useStore(selectExpiringProducts)
@@ -88,8 +88,9 @@ export default function Sidebar({ currentRoute, onNavigate, onClose }) {
 
       {/* Footer */}
       <div className="p-3 border-t border-slate-100 dark:border-slate-800 shrink-0 space-y-2">
-        <div className="px-1">
-          <Toggle label="ضريبة 14%" checked={isTaxEnabled} onChange={toggleTax} />
+        <div className="px-1 space-y-1.5">
+          <Toggle label="خدمة 10%"  checked={isServiceEnabled} onChange={toggleService} />
+          <Toggle label="ضريبة 14%" checked={isTaxEnabled}     onChange={toggleTax} />
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setIsDarkMode(!isDarkMode)}
