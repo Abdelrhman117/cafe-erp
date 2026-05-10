@@ -44,10 +44,10 @@ service cloud.firestore {
     }
 
     // ── Platform config ───────────────────────────────────
-    // Read: any signed-in user (admins need tenant list to login)
-    // Write: only non-anonymous users (admins manage their own cashiers)
+    // Read: public — login page needs tenant list BEFORE auth
+    // Write: only non-anonymous users
     match /erp_platform/{doc} {
-      allow read:  if isSignedIn();
+      allow read:  if true;
       allow write: if isNonAnonymous();
     }
 
