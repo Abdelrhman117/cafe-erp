@@ -52,24 +52,12 @@ service cloud.firestore {
     }
 
     // ── Cafe data ─────────────────────────────────────────
-    // Read: any signed-in user
-    // Write: only the admin whose email matches the tenant's adminEmail,
-    //        OR non-anonymous users that are already authenticated
-    //
-    // NOTE: To fully enforce per-cafe isolation (prevent cafe A admin
-    //       writing to cafe B), set a Firebase Custom Claim on login:
-    //         { cafeId: "cafe1" }
-    //       Then use: request.auth.token.cafeId == cafeId
-    //       This requires a Cloud Function or Admin SDK on the server.
-    //       Until then, the app-level check in useFirestore provides
-    //       the primary isolation.
+    // All signed-in users can read and write their cafe data.
+    // Cashiers are anonymous but still signed-in — they need to write
+    // orders, update inventory, and manage tables.
     match /erp_cafes/{cafeId} {
       allow read:  if isSignedIn();
-      allow write: if isNonAnonymous() ||
-        (isSignedIn() &&
-         get(/databases/$(database)/documents/erp_platform/config)
-           .data.tenants
-           .hasAny([{id: cafeId, adminEmail: request.auth.token.email}]));
+      allow write: if isSignedIn();
     }
 
   }
