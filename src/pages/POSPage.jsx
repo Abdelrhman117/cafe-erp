@@ -198,7 +198,7 @@ function makeCartKey(productId, selectedOpts = {}) {
 const SPLIT_COLORS = ['#4f46e5','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#ec4899']
 
 // ─── SplitModal — item-based bill splitting ───────────────
-function SplitModal({ cart, splitCount, setSplitCount, isServiceEnabled, isTaxEnabled, cafeName, cashierName, activeTable, onClose }) {
+function SplitModal({ cart, splitCount, setSplitCount, isServiceEnabled, isTaxEnabled, cafeName, cashierName, activeTable, onClose, onPayAll }) {
   const [assignments, setAssignments] = useState(() => {
     const init = {}
     cart.forEach(item => { init[item.cartKey || item.id] = 0 })
@@ -326,7 +326,11 @@ function SplitModal({ cart, splitCount, setSplitCount, isServiceEnabled, isTaxEn
           })}
         </div>
 
-        <Btn className="w-full justify-center py-3" onClick={onClose}>إغلاق</Btn>
+        <button onClick={onPayAll}
+          className="w-full py-3.5 rounded-2xl font-black text-sm text-white bg-emerald-600 hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2">
+          <Banknote size={16} /> تم الدفع — إغلاق الترابيزة
+        </button>
+        <Btn className="w-full justify-center py-2.5" onClick={onClose}>إغلاق بدون دفع</Btn>
       </div>
     </Modal>
   )
@@ -693,6 +697,21 @@ export default function POSPage() {
           cashierName={currentUser?.displayName}
           activeTable={activeTable}
           onClose={() => setSplitOpen(false)}
+          onPayAll={() => {
+            if (currentUser?.role === 'cashier' && !activeShift) { alert('افتح شيفت أولاً'); return }
+            placeOrder(cart, {
+              orderType: 'dine_in',
+              tableId: activeTable?.id,
+              tableName: activeTable?.name,
+              shiftId: activeShift?.id,
+              cashierName: currentUser?.displayName,
+              discountType,
+              discountValue: discountAmount > 0 ? dv : 0,
+              note: orderNote,
+            })
+            setCart([]); setActiveTable(null); setDiscountVal(''); setOrderNote('')
+            setSplitOpen(false); setCartOpen(false)
+          }}
         />
       )}
 
