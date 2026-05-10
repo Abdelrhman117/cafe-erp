@@ -71,7 +71,7 @@ export const useStore = create((set, get) => ({
     const pending = get()._pendingTableDeletes || {}
     // Keep only entries younger than 20 seconds
     const activePending = Object.fromEntries(
-      Object.entries(pending).filter(([, ts]) => now - ts < 20000)
+      Object.entries(pending).filter(([, ts]) => now - ts < 60000)
     )
     // Strip out any tableIds we deleted locally — don't let stale snapshots restore them
     const rawATO = data.activeTableOrders || {}

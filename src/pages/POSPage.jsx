@@ -518,8 +518,12 @@ export default function POSPage() {
     if (!cart.length) return
     if (currentUser?.role === 'cashier' && !activeShift) { alert('افتح شيفت أولاً'); return }
     const order = placeOrder(cart, { orderType, tableId: activeTable?.id, tableName: activeTable?.name, shiftId: activeShift?.id, cashierName: currentUser?.displayName, discountType, discountValue: discountAmount > 0 ? dv : 0, note: orderNote })
-    // dine_in: close table immediately — no receipt modal needed
-    if (mode !== 'dine_in') setLastOrder(order)
+    if (mode === 'dine_in') {
+      // Auto-print receipt for dine_in — table closes immediately without modal
+      printReceipt({ order, cafeName: currentUser?.cafeName, cashierName: currentUser?.displayName })
+    } else {
+      setLastOrder(order)
+    }
     setCart([]); setActiveTable(null); setDiscountVal(''); setOrderNote(''); setCartOpen(false)
   }
 

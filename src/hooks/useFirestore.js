@@ -111,7 +111,14 @@ export function useFirestore() {
       async (snap) => {
         if (snap.exists()) {
           const data = snap.data()
-          setCafeData(data)
+          // If this is a stale local-cache snapshot (not yet confirmed by server),
+          // preserve the current activeTableOrders so paid tables don't get restored.
+          // hasPendingWrites=true means it's our own write echoed back — safe to use fully.
+          const isStaleCache = snap.metadata.fromCache && !snap.metadata.hasPendingWrites
+          const merged = isStaleCache
+            ? { ...data, activeTableOrders: useStore.getState().activeTableOrders }
+            : data
+          setCafeData(merged)
           // حفظ في localStorage فقط لما البيانات تيجي من السيرفر (مش كاش)
           if (!snap.metadata.fromCache) saveLocal(currentUser.cafeId, data)
           if (snap.metadata?.hasPendingWrites) setSyncStatus('saving')
