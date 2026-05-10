@@ -63,17 +63,15 @@ export const useStore = create((set, get) => ({
   isServiceEnabled:  false,
 
   // ── Snapshot guard: prevents stale snapshots from restoring deleted tables ──
-  // { [tableId]: timestamp } — entries expire after 20s
+  // { [tableId]: timestamp } — entries expire after 60s
   _pendingTableDeletes: {},
 
   setCafeData: (data) => {
     const now     = Date.now()
     const pending = get()._pendingTableDeletes || {}
-    // Keep only entries younger than 20 seconds
     const activePending = Object.fromEntries(
       Object.entries(pending).filter(([, ts]) => now - ts < 60000)
     )
-    // Strip out any tableIds we deleted locally — don't let stale snapshots restore them
     const rawATO = data.activeTableOrders || {}
     const safeATO = Object.fromEntries(
       Object.entries(rawATO).filter(([id]) => !activePending[id])
