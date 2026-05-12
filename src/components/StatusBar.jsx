@@ -2,27 +2,34 @@ import { Wifi, WifiOff, RefreshCw, AlertCircle, Bell, AlertTriangle, RotateCcw }
 import { useStore, selectLowStock, selectExpiringProducts } from '../store'
 
 export default function StatusBar({ onNavigate }) {
-  const { isOnline, syncStatus, currentUser, _syncBuffer } = useStore()
+  const { isOnline, syncStatus, syncStatus: status, currentUser, _syncBuffer } = useStore()
   const lowStock = useStore(selectLowStock(50))
   const { expired, nearExpiry } = useStore(selectExpiringProducts)
 
   const hasPending = currentUser?.cafeId && Object.keys(_syncBuffer || {}).length > 0
 
   const barColor =
-    !isOnline         ? 'bg-rose-600' :
-    syncStatus === 'error'  ? 'bg-rose-600' :
-    syncStatus === 'saving' ? 'bg-amber-500' :
-    syncStatus === 'saved'  ? 'bg-emerald-500' :
-    hasPending              ? 'bg-amber-600' :
+    !isOnline              ? 'bg-rose-600'   :
+    status === 'error'     ? 'bg-rose-600'   :
+    status === 'saving'    ? 'bg-amber-500'  :
+    status === 'saved'     ? 'bg-emerald-500':
+    hasPending             ? 'bg-amber-600'  :
     'bg-emerald-600'
 
   const statusText =
-    !isOnline         ? '📵 أوفلاين — سيتم الرفع تلقائياً عند الاتصال' :
-    syncStatus === 'error'  ? '❌ فشل الحفظ — افتح Console (F12) لمعرفة السبب' :
-    syncStatus === 'saving' ? 'جاري الحفظ...' :
-    syncStatus === 'saved'  ? '✅ تم الحفظ' :
-    hasPending              ? '⏳ تغييرات معلقة...' :
+    !isOnline          ? '📵 أوفلاين — البيانات محفوظة محلياً، ستُرفع عند الاتصال' :
+    status === 'error' ? '❌ فشل الحفظ — اضغط للمحاولة مجدداً' :
+    status === 'saving'? 'جاري الحفظ...' :
+    status === 'saved' ? '✅ تم الحفظ' :
+    hasPending         ? '⏳ جاري الحفظ...' :
     '🔗 متصل'
+
+  const handleRetry = () => {
+    if (status !== 'error') return
+    const { _syncBuffer: buf, sync } = useStore.getState()
+    if (Object.keys(buf || {}).length > 0) sync(buf)
+    else useStore.getState().setSyncStatus('idle')
+  }
 
   return (
     <div className={`fixed top-0 left-0 right-0 z-[60] text-[10px] md:text-xs font-bold py-1.5 px-3 flex justify-between items-center text-white transition-colors duration-300 ${barColor}`}>
@@ -30,13 +37,18 @@ export default function StatusBar({ onNavigate }) {
       <div className="flex items-center gap-1.5">
         {!isOnline
           ? <WifiOff size={12} />
-          : syncStatus === 'saving' || hasPending
+          : status === 'saving' || hasPending
           ? <RefreshCw size={12} className="animate-spin" />
-          : syncStatus === 'error'
+          : status === 'error'
           ? <AlertCircle size={12} />
           : <Wifi size={12} />
         }
-        <span className="truncate max-w-[220px]">{statusText}</span>
+        <button
+          onClick={handleRetry}
+          className={status === 'error' ? 'underline cursor-pointer' : 'cursor-default'}
+        >
+          <span className="truncate max-w-[220px]">{statusText}</span>
+        </button>
       </div>
 
       {/* Alerts */}

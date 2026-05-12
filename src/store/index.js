@@ -151,18 +151,21 @@ export const useStore = create((set, get) => ({
     set(s => ({ _syncBuffer: { ...s._syncBuffer, ...partial }, syncStatus: 'saving' }))
     if (get()._syncTimer) clearTimeout(get()._syncTimer)
 
+    // Save to localStorage IMMEDIATELY — not inside the timer.
+    // If the browser closes before the 300ms fires, Firestore IndexedDB won't
+    // have the write yet, but localStorage will, so data survives a page reload.
+    const snap = get()
+    saveLocal(cafeId, {
+      products: snap.products, rawMaterials: snap.rawMaterials, employees: snap.employees,
+      expenses: snap.expenses, tables: snap.tables, shifts: snap.shifts, orders: snap.orders,
+      activeTableOrders: snap.activeTableOrders, offers: snap.offers, psDevices: snap.psDevices,
+      psSessions: snap.psSessions, isTaxEnabled: snap.isTaxEnabled, isServiceEnabled: snap.isServiceEnabled
+    })
+
     const timer = setTimeout(async () => {
       const buffer = get()._syncBuffer
       if (!Object.keys(buffer).length) return
       set({ _syncBuffer: {}, _syncTimer: null })
-
-      const s = get()
-      saveLocal(cafeId, {
-        products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
-        expenses: s.expenses, tables: s.tables, shifts: s.shifts, orders: s.orders,
-        activeTableOrders: s.activeTableOrders, offers: s.offers, psDevices: s.psDevices,
-        psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled, isServiceEnabled: s.isServiceEnabled
-      })
 
       const doSave = async () => { await saveCafe(cafeId, buffer) }
       try {

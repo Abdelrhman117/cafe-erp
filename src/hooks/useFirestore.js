@@ -27,11 +27,42 @@ export function useFirestore() {
 
   // ── Online/offline ────────────────────────────────────────
   useEffect(() => {
-    const on  = () => setIsOnline(true)
-    const off = () => setIsOnline(false)
-    window.addEventListener('online',  on)
-    window.addEventListener('offline', off)
-    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+    const handleOnline = () => {
+      setIsOnline(true)
+      // Retry failed sync when connection is restored
+      const { syncStatus, _syncBuffer, currentUser: u } = useStore.getState()
+      if (syncStatus === 'error' && u?.cafeId && Object.keys(_syncBuffer || {}).length > 0) {
+        useStore.getState().sync(_syncBuffer)
+      }
+    }
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener('online',  handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online',  handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  // ── Flush pending changes before page closes ─────────────
+  useEffect(() => {
+    const handleUnload = () => {
+      const { _syncTimer, currentUser: u } = useStore.getState()
+      if (!u?.cafeId) return
+      // If a debounced timer is pending, force-save to localStorage right now
+      if (_syncTimer) {
+        clearTimeout(_syncTimer)
+        const s = useStore.getState()
+        saveLocal(u.cafeId, {
+          products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
+          expenses: s.expenses, tables: s.tables, shifts: s.shifts, orders: s.orders,
+          activeTableOrders: s.activeTableOrders, offers: s.offers, psDevices: s.psDevices,
+          psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled, isServiceEnabled: s.isServiceEnabled
+        })
+      }
+    }
+    window.addEventListener('beforeunload', handleUnload)
+    return () => window.removeEventListener('beforeunload', handleUnload)
   }, [])
 
   // ── Restore session on page refresh ──────────────────────
