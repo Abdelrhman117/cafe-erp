@@ -146,7 +146,10 @@ export function printBaristaTicket({ items, tableName, note }) {
     const optsStr = i.selectedOptions && Object.keys(i.selectedOptions).length > 0
       ? `<div style="font-size:11px;color:#475569;margin-right:14px;margin-top:2px">${Object.entries(i.selectedOptions).map(([k,v]) => `${k}: <b>${v}</b>`).join(' &nbsp;•&nbsp; ')}</div>`
       : ''
-    return `<div style="margin-bottom:10px"><div style="font-size:16px;font-weight:900">${i.quantity}× ${i.name}</div>${optsStr}</div>`
+    const noteStr = i.itemNote
+      ? `<div style="font-size:12px;color:#b45309;font-weight:900;margin-right:14px;margin-top:3px">📝 ${i.itemNote}</div>`
+      : ''
+    return `<div style="margin-bottom:10px"><div style="font-size:16px;font-weight:900">${i.quantity}× ${i.name}</div>${optsStr}${noteStr}</div>`
   }).join('')
 
   const noteHtml = note
