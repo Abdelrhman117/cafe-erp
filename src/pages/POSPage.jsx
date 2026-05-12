@@ -529,10 +529,15 @@ export default function POSPage() {
     if (!cart.length) return
     if (currentUser?.role === 'cashier' && !activeShift) { alert('افتح شيفت أولاً'); return }
     const order = placeOrder(cart, { orderType, tableId: activeTable?.id, tableName: activeTable?.name, shiftId: activeShift?.id, cashierName: currentUser?.displayName, discountType, discountValue: discountAmount > 0 ? dv : 0, note: orderNote })
+
     if (mode === 'dine_in') {
-      // Auto-print receipt for dine_in — table closes immediately without modal
+      // For dine_in: print barista ticket for any items not yet sent, then print receipt
+      const newItems = cart.filter(i => !i.sentToBarista)
+      if (newItems.length > 0) printBaristaTicket({ items: newItems, tableName: activeTable?.name || 'صالة', note: orderNote })
       printReceipt({ order, cafeName: currentUser?.cafeName, cashierName: currentUser?.displayName })
     } else {
+      // For takeaway: always send all items to barista, then show receipt modal
+      printBaristaTicket({ items: cart, tableName: 'تيك أواي', note: orderNote })
       setLastOrder(order)
     }
     setCart([]); setActiveTable(null); setDiscountVal(''); setOrderNote(''); setCartOpen(false)
