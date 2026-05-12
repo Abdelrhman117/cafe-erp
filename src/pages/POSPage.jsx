@@ -46,29 +46,38 @@ function ProductCard({ product, offers, onAdd }) {
   )
 }
 
-function CartItem({ item, onInc, onDec }) {
+function CartItem({ item, onInc, onDec, onNoteChange }) {
   const opts = item.selectedOptions
   const optsText = opts && Object.keys(opts).length > 0
     ? Object.entries(opts).map(([k, v]) => `${k}: ${v}`).join(' • ')
     : null
   return (
-    <div className="bg-slate-50 dark:bg-slate-700/50 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-600 flex justify-between items-center gap-2">
-      <div className="flex gap-2 items-center min-w-0 flex-1">
-        {item.image
-          ? <img src={item.image} alt={item.name} className="w-9 h-9 rounded-xl object-cover shrink-0" onError={e => { e.target.onerror=null; e.target.src='https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=200&q=80' }} />
-          : <div className="w-9 h-9 bg-indigo-100 dark:bg-indigo-900 text-indigo-500 rounded-xl flex items-center justify-center shrink-0"><Coffee size={13} /></div>
-        }
-        <div className="min-w-0">
-          <p className="font-bold text-slate-800 dark:text-white text-xs truncate max-w-[110px]">{item.name}</p>
-          {optsText && <p className="text-[9px] font-bold text-indigo-400 truncate max-w-[110px]">{optsText}</p>}
-          <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400">{(item.price * item.quantity).toFixed(2)} ج</p>
+    <div className="bg-slate-50 dark:bg-slate-700/50 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-600 space-y-1.5">
+      <div className="flex justify-between items-center gap-2">
+        <div className="flex gap-2 items-center min-w-0 flex-1">
+          {item.image
+            ? <img src={item.image} alt={item.name} className="w-9 h-9 rounded-xl object-cover shrink-0" onError={e => { e.target.onerror=null; e.target.src='https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=200&q=80' }} />
+            : <div className="w-9 h-9 bg-indigo-100 dark:bg-indigo-900 text-indigo-500 rounded-xl flex items-center justify-center shrink-0"><Coffee size={13} /></div>
+          }
+          <div className="min-w-0">
+            <p className="font-bold text-slate-800 dark:text-white text-xs truncate max-w-[110px]">{item.name}</p>
+            {optsText && <p className="text-[9px] font-bold text-indigo-400 truncate max-w-[110px]">{optsText}</p>}
+            <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400">{(item.price * item.quantity).toFixed(2)} ج</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-600 shrink-0">
+          <button onClick={onInc} className="text-emerald-500 p-1 hover:bg-emerald-50 dark:hover:bg-slate-700 rounded-lg"><Plus size={12} /></button>
+          <span className="font-black w-5 text-center text-xs text-slate-800 dark:text-white">{item.quantity}</span>
+          <button onClick={onDec} className="text-rose-500 p-1 hover:bg-rose-50 dark:hover:bg-slate-700 rounded-lg"><Minus size={12} /></button>
         </div>
       </div>
-      <div className="flex items-center gap-1 bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-600 shrink-0">
-        <button onClick={onInc} className="text-emerald-500 p-1 hover:bg-emerald-50 dark:hover:bg-slate-700 rounded-lg"><Plus size={12} /></button>
-        <span className="font-black w-5 text-center text-xs text-slate-800 dark:text-white">{item.quantity}</span>
-        <button onClick={onDec} className="text-rose-500 p-1 hover:bg-rose-50 dark:hover:bg-slate-700 rounded-lg"><Minus size={12} /></button>
-      </div>
+      <input
+        type="text"
+        value={item.itemNote || ''}
+        onChange={e => onNoteChange(e.target.value)}
+        placeholder="ملاحظة للباريستا..."
+        className="w-full px-2.5 py-1.5 text-[10px] font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-700 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:border-amber-400 transition-colors"
+      />
     </div>
   )
 }
@@ -342,7 +351,7 @@ function CartPanel({
   discountVal, setDiscountType, setDiscountVal, isServiceEnabled, serviceCharge,
   isTaxEnabled, tax, total,
   handleHold, handlePay, setSplitCount, setSplitOpen, incItem, decItem,
-  setCart, setActiveTable, setCartOpen, orderNote, setOrderNote
+  setCart, setActiveTable, setCartOpen, orderNote, setOrderNote, updateItemNote
 }) {
   return (
     <div className="flex flex-col h-full">
@@ -366,6 +375,7 @@ function CartPanel({
                 item={item}
                 onInc={() => incItem(item.cartKey || item.id)}
                 onDec={() => decItem(item.cartKey || item.id)}
+                onNoteChange={val => updateItemNote(item.cartKey || item.id, val)}
               />
             ))
         }
@@ -498,12 +508,13 @@ export default function POSPage() {
     addToCart(product, price)
   }
 
-  const incItem = key => setCart(prev => prev.map(i => (i.cartKey || i.id) === key ? { ...i, quantity: i.quantity + 1 } : i))
-  const decItem = key => setCart(prev => {
+  const incItem        = key => setCart(prev => prev.map(i => (i.cartKey || i.id) === key ? { ...i, quantity: i.quantity + 1 } : i))
+  const decItem        = key => setCart(prev => {
     const it = prev.find(i => (i.cartKey || i.id) === key)
     if (it?.quantity <= 1) return prev.filter(i => (i.cartKey || i.id) !== key)
     return prev.map(i => (i.cartKey || i.id) === key ? { ...i, quantity: i.quantity - 1 } : i)
   })
+  const updateItemNote = (key, val) => setCart(prev => prev.map(i => (i.cartKey || i.id) === key ? { ...i, itemNote: val } : i))
 
   const subtotal       = cart.reduce((s, i) => s + i.price * i.quantity, 0)
   const dv             = parseFloat(discountVal) || 0
@@ -561,7 +572,7 @@ export default function POSPage() {
     discountVal, setDiscountType, setDiscountVal, isServiceEnabled, serviceCharge,
     isTaxEnabled, tax, total,
     handleHold, handlePay, setSplitCount, setSplitOpen, incItem, decItem,
-    setCart, setActiveTable, setCartOpen, orderNote, setOrderNote
+    setCart, setActiveTable, setCartOpen, orderNote, setOrderNote, updateItemNote
   }
 
   return (
