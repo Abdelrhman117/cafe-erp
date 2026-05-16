@@ -3,6 +3,21 @@ import { saveCafe, savePlatform } from '../lib/firestore'
 import { saveLocal } from '../lib/localCache'
 import { RAW_MATERIALS as SEED_MATERIALS, PRODUCTS as SEED_PRODUCTS } from '../lib/seed'
 
+const PENDING_DELETES_KEY = 'erp_pending_deletes'
+const PENDING_DELETES_TTL = 86400000 // 24 hours — covers all-day offline scenarios
+
+function loadPendingDeletes() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(PENDING_DELETES_KEY) || '{}')
+    const now = Date.now()
+    return Object.fromEntries(Object.entries(stored).filter(([, ts]) => now - ts < PENDING_DELETES_TTL))
+  } catch { return {} }
+}
+
+function savePendingDeletes(obj) {
+  try { localStorage.setItem(PENDING_DELETES_KEY, JSON.stringify(obj)) } catch {}
+}
+
 // ─── Default data (من ريسيبي let's Café) ──────────────────
 const DEFAULT_PRODUCTS      = SEED_PRODUCTS
 const DEFAULT_RAW_MATERIALS = SEED_MATERIALS
@@ -63,15 +78,16 @@ export const useStore = create((set, get) => ({
   isServiceEnabled:  false,
 
   // ── Snapshot guard: prevents stale snapshots from restoring deleted tables ──
-  // { [tableId]: timestamp } — entries expire after 60s
-  _pendingTableDeletes: {},
+  // { [tableId]: timestamp } — persisted in localStorage, 24h TTL
+  _pendingTableDeletes: loadPendingDeletes(),
 
   setCafeData: (data) => {
     const now     = Date.now()
     const pending = get()._pendingTableDeletes || {}
     const activePending = Object.fromEntries(
-      Object.entries(pending).filter(([, ts]) => now - ts < 60000)
+      Object.entries(pending).filter(([, ts]) => now - ts < PENDING_DELETES_TTL)
     )
+    savePendingDeletes(activePending)
     const rawATO = data.activeTableOrders || {}
     const safeATO = Object.fromEntries(
       Object.entries(rawATO).filter(([id]) => !activePending[id])
@@ -140,7 +156,7 @@ export const useStore = create((set, get) => ({
               })
               .catch(e => {
                 console.error('Sync failed:', e.code, e.message)
-                set({ syncStatus: 'error' })
+                set(s => ({ syncStatus: 'error', _syncBuffer: { ...buffer, ...s._syncBuffer } }))
               })
           }, 1000)
         })
@@ -364,6 +380,7 @@ export const useStore = create((set, get) => ({
     const newPending = tableId
       ? { ...get()._pendingTableDeletes, [tableId]: Date.now() }
       : get()._pendingTableDeletes
+    if (tableId) savePendingDeletes(newPending)
 
     set({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO, _pendingTableDeletes: newPending })
     // immediate: true لضمان حذف الطاولة فوراً دون تأخير 300ms
