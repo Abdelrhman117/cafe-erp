@@ -40,11 +40,18 @@ export function useFirestore() {
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true)
-      // Retry failed sync when connection is restored
-      const { syncStatus, _syncBuffer, currentUser: u } = useStore.getState()
-      if (syncStatus === 'error' && u?.cafeId && Object.keys(_syncBuffer || {}).length > 0) {
-        useStore.getState().sync(_syncBuffer)
-      }
+      const { currentUser: u } = useStore.getState()
+      if (!u?.cafeId) return
+      // Upload complete current state when going online.
+      // This covers the all-day offline scenario: one authoritative write at reconnect
+      // overwrites any intermediate queued writes with the definitive final state.
+      const s = useStore.getState()
+      useStore.getState().sync({
+        products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
+        expenses: s.expenses, tables: s.tables, shifts: s.shifts, orders: s.orders,
+        activeTableOrders: s.activeTableOrders, offers: s.offers, psDevices: s.psDevices,
+        psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled, isServiceEnabled: s.isServiceEnabled
+      }, { immediate: true })
     }
     const handleOffline = () => setIsOnline(false)
     window.addEventListener('online',  handleOnline)
