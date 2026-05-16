@@ -40,7 +40,6 @@ export function useFirestore() {
     let reconnectSyncing = false
     const handleOnline = () => {
       setIsOnline(true)
-<<<<<<< HEAD
       if (reconnectSyncing) return
       const { currentUser: u } = useStore.getState()
       if (!u?.cafeId) return
@@ -71,17 +70,17 @@ export function useFirestore() {
     const handleUnload = () => {
       const { _syncTimer, currentUser: u } = useStore.getState()
       if (!u?.cafeId) return
-      // If a debounced timer is pending, force-save to localStorage right now
-      if (_syncTimer) {
-        clearTimeout(_syncTimer)
-        const s = useStore.getState()
-        saveLocal(u.cafeId, {
-          products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
-          expenses: s.expenses, tables: s.tables, shifts: s.shifts, orders: s.orders,
-          activeTableOrders: s.activeTableOrders, offers: s.offers, psDevices: s.psDevices,
-          psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled, isServiceEnabled: s.isServiceEnabled
-        })
-      }
+      // Cancel any pending debounce timer to avoid incomplete Firestore write on unloading page
+      if (_syncTimer) clearTimeout(_syncTimer)
+      // Always write the absolute latest store state to localStorage —
+      // this is the last safety net regardless of whether a timer was pending
+      const s = useStore.getState()
+      saveLocal(u.cafeId, {
+        products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
+        expenses: s.expenses, tables: s.tables, shifts: s.shifts, orders: s.orders,
+        activeTableOrders: s.activeTableOrders, offers: s.offers, psDevices: s.psDevices,
+        psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled, isServiceEnabled: s.isServiceEnabled
+      })
     }
     window.addEventListener('beforeunload', handleUnload)
     return () => window.removeEventListener('beforeunload', handleUnload)
@@ -172,8 +171,18 @@ export function useFirestore() {
             ? { ...data, activeTableOrders: useStore.getState().activeTableOrders }
             : data
           setCafeData(merged)
-          // حفظ في localStorage فقط لما البيانات تيجي من السيرفر (مش كاش)
-          if (!snap.metadata.fromCache) saveLocal(currentUser.cafeId, data)
+          // Save to localStorage only on server-confirmed snapshots — and save the
+          // store's current state (post-filter) not the raw server data, so that
+          // paid/cleared tables never appear in the local cache on next reload.
+          if (!snap.metadata.fromCache) {
+            const s = useStore.getState()
+            saveLocal(currentUser.cafeId, {
+              products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
+              expenses: s.expenses, tables: s.tables, shifts: s.shifts, orders: s.orders,
+              activeTableOrders: s.activeTableOrders, offers: s.offers, psDevices: s.psDevices,
+              psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled, isServiceEnabled: s.isServiceEnabled
+            })
+          }
           if (snap.metadata?.hasPendingWrites) setSyncStatus('saving')
           else setSyncStatus('idle')
         } else {
