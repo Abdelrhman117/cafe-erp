@@ -6,24 +6,51 @@ import { loadLocal, saveLocal } from '../lib/localCache'
 import { useStore } from '../store'
 
 const SESSION_KEY = 'erp_session'
+// Cashier sessions in localStorage expire after 12 hours (covers one work day).
+// This lets the cashier reopen the browser mid-shift without losing their session,
+// while ensuring the next day starts clean.
+const CASHIER_SESSION_TTL = 12 * 3600 * 1000
 
 // ─── Session helpers ──────────────────────────────────────
-// Cashiers use sessionStorage (clears on browser close — intentional).
-// Admins/owners use localStorage so sessions survive a full browser restart.
 function saveSession(user) {
   try {
-    const store = user?.role === 'cashier' ? sessionStorage : localStorage
-    store.setItem(SESSION_KEY, JSON.stringify(user))
+    if (user?.role === 'cashier') {
+      // Cashier: save to BOTH storages.
+      // sessionStorage = current tab (instant restore on refresh)
+      // localStorage   = crash recovery (survives browser close mid-shift)
+      const payload = JSON.stringify({ ...user, _savedAt: Date.now() })
+      sessionStorage.setItem(SESSION_KEY, payload)
+      localStorage.setItem(SESSION_KEY, payload)
+    } else {
+      // Admin/owner: localStorage only (persists across browser restarts, no TTL)
+      localStorage.setItem(SESSION_KEY, JSON.stringify(user))
+    }
   } catch {}
 }
+
 function loadSession() {
   try {
-    // sessionStorage (cashier) takes priority — cashier is the active shift user
+    // sessionStorage is preferred — it's the current active tab's session
     const fromSession = sessionStorage.getItem(SESSION_KEY)
     if (fromSession) return JSON.parse(fromSession)
-    return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null')
+
+    // Fallback to localStorage (admin persistent session, or cashier crash recovery)
+    const stored = localStorage.getItem(SESSION_KEY)
+    if (!stored) return null
+    const parsed = JSON.parse(stored)
+
+    // Enforce 12h TTL on cashier sessions recovered from localStorage
+    if (parsed?.role === 'cashier') {
+      const age = Date.now() - (parsed._savedAt || 0)
+      if (age > CASHIER_SESSION_TTL) {
+        localStorage.removeItem(SESSION_KEY)
+        return null
+      }
+    }
+    return parsed
   } catch { return null }
 }
+
 function clearSession() {
   try { localStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(SESSION_KEY) } catch {}
 }
@@ -44,9 +71,9 @@ export function useFirestore() {
       const { currentUser: u } = useStore.getState()
       if (!u?.cafeId) return
       reconnectSyncing = true
-      // Upload complete current state when going online.
-      // This covers the all-day offline scenario: one authoritative write at reconnect
-      // overwrites any intermediate queued writes with the definitive final state.
+      // One authoritative upload of the full current state when going online.
+      // This is the end-of-day sync: whatever is in localStorage (already loaded
+      // into the store) is sent to Firestore in a single write.
       const s = useStore.getState()
       useStore.getState().sync({
         products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
@@ -65,15 +92,16 @@ export function useFirestore() {
     }
   }, [])
 
-  // ── Flush pending changes before page closes ─────────────
+  // ── Flush state to localStorage before page closes ────────
   useEffect(() => {
     const handleUnload = () => {
       const { _syncTimer, currentUser: u } = useStore.getState()
       if (!u?.cafeId) return
-      // Cancel any pending debounce timer to avoid incomplete Firestore write on unloading page
+      // Cancel debounce timer — no point firing a Firestore write on an unloading page
       if (_syncTimer) clearTimeout(_syncTimer)
-      // Always write the absolute latest store state to localStorage —
-      // this is the last safety net regardless of whether a timer was pending
+      // Always write the final store state regardless of whether a timer was pending.
+      // This is the last safety net: even if saveLocal was already called moments ago,
+      // we capture any state changes that happened in the intervening microseconds.
       const s = useStore.getState()
       saveLocal(u.cafeId, {
         products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
@@ -86,53 +114,45 @@ export function useFirestore() {
     return () => window.removeEventListener('beforeunload', handleUnload)
   }, [])
 
-  // ── Restore session on page refresh ──────────────────────
-  // Firebase Auth persists admin sessions automatically.
-  // For cashiers (anonymous), we store session in sessionStorage.
+  // ── Restore session immediately on mount ──────────────────
+  // Runs synchronously before Firebase Auth initialises, so the UI doesn't
+  // flicker on page load. Handles both cashiers (localStorage crash-recovery)
+  // and admins (localStorage persistent).
   useEffect(() => {
-    if (currentUser) return   // already logged in
-
+    if (currentUser) return
     const saved = loadSession()
-    if (saved?.role === 'cashier') {
-      // Restore cashier session — Firebase anonymous session may still be alive
-      setCurrentUser(saved)
-    }
-    // Admin sessions are restored via onAuthStateChanged below
+    if (saved) setCurrentUser(saved)
   }, [])
 
-  // ── Firebase Auth state → restore admin/owner session ────
+  // ── Firebase Auth state ───────────────────────────────────
+  // Secondary restore: if Firebase Auth fires after the mount effect and
+  // currentUser is still null (very first load, or mount effect found nothing),
+  // try to restore from storage. Also handles forced logout when Firebase
+  // revokes the token (e.g. password change, manual revoke in console).
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
       const storeUser = useStore.getState().currentUser
 
       if (!firebaseUser) {
-        // Firebase signed out completely
-        // Only force logout if the current user is NOT a cashier
-        // (cashier sessions are anonymous and may expire)
-        if (storeUser && storeUser.role !== 'cashier') {
-          clearSession()
-          useStore.getState().setCurrentUser(null)
-        } else if (storeUser?.role === 'cashier') {
-          // Anonymous session expired — cashier must re-login
+        // Firebase says no authenticated user — force logout for all roles
+        if (storeUser) {
           clearSession()
           useStore.getState().setCurrentUser(null)
         }
         return
       }
 
-      // Firebase user exists — skip if already in store
+      // Firebase confirmed a user is logged in — skip if already restored
       if (storeUser) return
 
-      // Page refresh for admin/owner — restore from session
+      // Mount effect may have run before Firebase initialised; try again here
       const saved = loadSession()
-      if (saved && saved.role !== 'cashier') {
-        setCurrentUser(saved)
-      }
+      if (saved) setCurrentUser(saved)
     })
     return unsub
   }, [])
 
-  // ── Save session whenever currentUser changes ─────────────
+  // ── Persist session on every currentUser change ───────────
   useEffect(() => {
     if (currentUser) {
       saveSession(currentUser)
@@ -150,11 +170,12 @@ export function useFirestore() {
     return unsub
   }, [])
 
-  // ── Cafe subscription ─────────────────────────────────────
+  // ── Cafe data subscription ────────────────────────────────
   useEffect(() => {
     if (!currentUser?.cafeId) return
 
-    // تحميل فوري من localStorage قبل ما Firestore يرد (أوفلاين-فيرست)
+    // Load from localStorage immediately — gives the UI instant data
+    // before any Firestore response (works offline too)
     const cached = loadLocal(currentUser.cafeId)
     if (cached) setCafeData(cached)
 
@@ -163,17 +184,18 @@ export function useFirestore() {
       async (snap) => {
         if (snap.exists()) {
           const data = snap.data()
-          // If this is a stale local-cache snapshot (not yet confirmed by server),
-          // preserve the current activeTableOrders so paid tables don't get restored.
-          // hasPendingWrites=true means it's our own write echoed back — safe to use fully.
+          // isStaleCache: snapshot came from Firestore's local IndexedDB cache
+          // with no pending writes — it's old server data, not ours.
+          // In this case, keep the in-memory activeTableOrders (already loaded
+          // from localStorage) so paid/cleared tables don't get restored.
           const isStaleCache = snap.metadata.fromCache && !snap.metadata.hasPendingWrites
           const merged = isStaleCache
             ? { ...data, activeTableOrders: useStore.getState().activeTableOrders }
             : data
           setCafeData(merged)
-          // Save to localStorage only on server-confirmed snapshots — and save the
-          // store's current state (post-filter) not the raw server data, so that
-          // paid/cleared tables never appear in the local cache on next reload.
+
+          // On server-confirmed snapshots, save the post-filter store state
+          // (not the raw server data) so localStorage never has stale tables
           if (!snap.metadata.fromCache) {
             const s = useStore.getState()
             saveLocal(currentUser.cafeId, {
@@ -183,10 +205,11 @@ export function useFirestore() {
               psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled, isServiceEnabled: s.isServiceEnabled
             })
           }
+
           if (snap.metadata?.hasPendingWrites) setSyncStatus('saving')
           else setSyncStatus('idle')
         } else {
-          // Document doesn't exist yet — create it with current store data
+          // Document doesn't exist yet — initialise it with current store data
           const { products, rawMaterials, employees, expenses, tables,
                   shifts, orders, activeTableOrders, offers, psDevices,
                   psSessions, isTaxEnabled, isServiceEnabled } = useStore.getState()
@@ -198,7 +221,7 @@ export function useFirestore() {
               psSessions, isTaxEnabled, isServiceEnabled
             })
           } catch (e) {
-            console.error('Failed to initialize cafe document:', e)
+            console.error('Failed to initialise cafe document:', e)
           }
         }
       },
