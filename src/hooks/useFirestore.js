@@ -8,14 +8,25 @@ import { useStore } from '../store'
 const SESSION_KEY = 'erp_session'
 
 // ─── Session helpers ──────────────────────────────────────
+// Cashiers use sessionStorage (clears on browser close — intentional).
+// Admins/owners use localStorage so sessions survive a full browser restart.
 function saveSession(user) {
-  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(user)) } catch {}
+  try {
+    const store = user?.role === 'cashier' ? sessionStorage : localStorage
+    store.setItem(SESSION_KEY, JSON.stringify(user))
+  } catch {}
 }
 function loadSession() {
-  try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null') } catch { return null }
+  try {
+    return JSON.parse(
+      localStorage.getItem(SESSION_KEY) ||
+      sessionStorage.getItem(SESSION_KEY) ||
+      'null'
+    )
+  } catch { return null }
 }
 function clearSession() {
-  try { sessionStorage.removeItem(SESSION_KEY) } catch {}
+  try { localStorage.removeItem(SESSION_KEY); sessionStorage.removeItem(SESSION_KEY) } catch {}
 }
 
 export function useFirestore() {

@@ -70,7 +70,7 @@ export const useStore = create((set, get) => ({
     const now     = Date.now()
     const pending = get()._pendingTableDeletes || {}
     const activePending = Object.fromEntries(
-      Object.entries(pending).filter(([, ts]) => now - ts < 60000)
+      Object.entries(pending).filter(([, ts]) => now - ts < 300000)
     )
     const rawATO = data.activeTableOrders || {}
     const safeATO = Object.fromEntries(
@@ -140,7 +140,7 @@ export const useStore = create((set, get) => ({
               })
               .catch(e => {
                 console.error('Sync failed:', e.code, e.message)
-                set({ syncStatus: 'error' })
+                set(s => ({ syncStatus: 'error', _syncBuffer: { ...buffer, ...s._syncBuffer } }))
               })
           }, 1000)
         })
