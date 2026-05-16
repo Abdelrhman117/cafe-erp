@@ -324,7 +324,10 @@ export const useStore = create((set, get) => ({
       ? { ...s, status: 'closed', endTime: new Date().toLocaleString('ar-EG'), actualCash, totalSales }
       : s)
     set({ shifts: next })
-    get().sync({ shifts: next })
+    // immediate: true queues the Firestore write before fbSignOut fires (logout is async).
+    // Without this, the 300ms debounce timer may fire after the anonymous auth is revoked
+    // and the closed shift would never reach Firestore (safe in localStorage, but delayed).
+    get().sync({ shifts: next }, { immediate: true })
   },
 
   // ── Orders / POS ─────────────────────────────────────────
