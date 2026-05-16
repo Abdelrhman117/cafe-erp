@@ -149,14 +149,17 @@ export const useStore = create((set, get) => ({
         })
         .catch(() => {
           setTimeout(() => {
-            saveCafe(cafeId, buffer)
+            // merge any new changes that arrived during the 1s retry window
+            const retryBuffer = { ...buffer, ...get()._syncBuffer }
+            set({ _syncBuffer: {} })
+            saveCafe(cafeId, retryBuffer)
               .then(() => {
                 set({ syncStatus: 'saved' })
                 setTimeout(() => set(s => s.syncStatus === 'saved' ? { syncStatus: 'idle' } : {}), 2000)
               })
               .catch(e => {
                 console.error('Sync failed:', e.code, e.message)
-                set(s => ({ syncStatus: 'error', _syncBuffer: { ...buffer, ...s._syncBuffer } }))
+                set(s => ({ syncStatus: 'error', _syncBuffer: { ...retryBuffer, ...s._syncBuffer } }))
               })
           }, 1000)
         })

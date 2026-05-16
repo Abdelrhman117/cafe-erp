@@ -18,11 +18,10 @@ function saveSession(user) {
 }
 function loadSession() {
   try {
-    return JSON.parse(
-      localStorage.getItem(SESSION_KEY) ||
-      sessionStorage.getItem(SESSION_KEY) ||
-      'null'
-    )
+    // sessionStorage (cashier) takes priority — cashier is the active shift user
+    const fromSession = sessionStorage.getItem(SESSION_KEY)
+    if (fromSession) return JSON.parse(fromSession)
+    return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null')
   } catch { return null }
 }
 function clearSession() {
@@ -38,10 +37,13 @@ export function useFirestore() {
 
   // ── Online/offline ────────────────────────────────────────
   useEffect(() => {
+    let reconnectSyncing = false
     const handleOnline = () => {
       setIsOnline(true)
+      if (reconnectSyncing) return
       const { currentUser: u } = useStore.getState()
       if (!u?.cafeId) return
+      reconnectSyncing = true
       // Upload complete current state when going online.
       // This covers the all-day offline scenario: one authoritative write at reconnect
       // overwrites any intermediate queued writes with the definitive final state.
@@ -52,6 +54,7 @@ export function useFirestore() {
         activeTableOrders: s.activeTableOrders, offers: s.offers, psDevices: s.psDevices,
         psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled, isServiceEnabled: s.isServiceEnabled
       }, { immediate: true })
+      setTimeout(() => { reconnectSyncing = false }, 5000)
     }
     const handleOffline = () => setIsOnline(false)
     window.addEventListener('online',  handleOnline)
