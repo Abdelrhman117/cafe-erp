@@ -470,6 +470,7 @@ export default function POSPage() {
   // Bill split
   const [splitOpen,  setSplitOpen]  = useState(false)
   const [splitCount, setSplitCount] = useState(2)
+  const [lowStockAlert, setLowStockAlert] = useState([])
 
   const isAdmin       = currentUser?.role === 'admin'
   const isProductMode = mode === 'takeaway' || mode === 'dine_in'
@@ -541,6 +542,7 @@ export default function POSPage() {
       setLastOrder(order)
     }
     setCart([]); setActiveTable(null); setDiscountVal(''); setOrderNote(''); setCartOpen(false)
+    if (order.lowStockWarnings?.length > 0) setLowStockAlert(order.lowStockWarnings)
   }
 
   const handleHold = () => {
@@ -666,6 +668,25 @@ export default function POSPage() {
             <CartPanel {...cartPanelProps} />
           </div>
         </>
+      )}
+
+      {/* ── Low stock alert ── */}
+      {lowStockAlert.length > 0 && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl w-full max-w-sm shadow-2xl text-center">
+            <div className="text-4xl mb-3">⚠️</div>
+            <h3 className="text-lg font-black text-amber-600 mb-2">تنبيه نفاد المخزون</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 font-bold mb-4">المواد الخام التالية نفدت أو أصبحت سالبة:</p>
+            <div className="space-y-1 mb-5">
+              {lowStockAlert.map((name, i) => (
+                <div key={i} className="bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 px-3 py-2 rounded-xl text-sm font-black">{name}</div>
+              ))}
+            </div>
+            <button onClick={() => setLowStockAlert([])} className="w-full bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-2xl font-black transition-colors">
+              حسناً، سأتحقق من المخزون
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ── Options selection modal ── */}

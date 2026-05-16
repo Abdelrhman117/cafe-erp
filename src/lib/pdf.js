@@ -68,8 +68,9 @@ export function exportSalesReport({ orders, metrics, period, cafeName }) {
 
 // ─── تقرير موظف ───────────────────────────────────────────
 export function exportEmployeeReport({ employee, orders, shifts, cafeName }) {
-  const empOrders = orders.filter(o => o.cashierName === employee.name)
-  const empShifts = shifts.filter(s => s.cashierName === employee.name)
+  const dn = `${employee.name} — ${cafeName}`
+  const empOrders = orders.filter(o => o.cashierName === dn || o.cashierName === employee.name)
+  const empShifts = shifts.filter(s => s.cashierName === dn || s.cashierName === employee.name)
   const total     = empOrders.reduce((s, o) => s + o.total, 0)
   const date      = new Date().toLocaleDateString('ar-EG')
 

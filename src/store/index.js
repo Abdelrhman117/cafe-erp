@@ -415,9 +415,15 @@ export const useStore = create((set, get) => ({
     get().sync({ psDevices: next })
   },
   deletePsDevice: (id) => {
-    const next = get().psDevices.filter(d => d.id !== id)
-    set({ psDevices: next })
-    get().sync({ psDevices: next })
+    const { psDevices, psSessions } = get()
+    const next = psDevices.filter(d => d.id !== id)
+    const updatedSessions = psSessions.map(s =>
+      s.deviceId === id && s.status === 'active'
+        ? { ...s, status: 'ended', endTime: Date.now(), endTimeStr: new Date().toLocaleString('ar-EG'), cost: 0, durationMin: 0, billedMin: 0 }
+        : s
+    )
+    set({ psDevices: next, psSessions: updatedSessions })
+    get().sync({ psDevices: next, psSessions: updatedSessions })
   },
   startPsSession: (deviceId, cashierName) => {
     const device  = get().psDevices.find(d => d.id === deviceId)

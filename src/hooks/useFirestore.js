@@ -12,6 +12,7 @@ const CASHIER_SESSION_TTL = 24 * 3600 * 1000
 
 // ─── Session helpers ──────────────────────────────────────
 function saveSession(user) {
+  if (!user || user.role === 'customer') return
   try {
     if (user?.role === 'cashier') {
       // Cashier: save to BOTH storages.

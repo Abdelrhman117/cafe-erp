@@ -128,6 +128,7 @@ export default function HRPage() {
   const tenantId = currentUser?.cafeId
   const tenant   = platform?.tenants?.find(t => t.id === tenantId)
   const cashiers = tenant?.cashiers || []
+  const cafeName = currentUser?.cafeName || ''
 
   // ربط كل موظف بكاشيره إن وجد
   const getCashier = (emp) => cashiers.find(c => c.employeeId === emp.id)
@@ -141,8 +142,11 @@ export default function HRPage() {
 
   const handleExport = (emp) => exportEmployeeReport({ employee: emp, orders, shifts, cafeName: currentUser?.cafeName || '' })
 
-  const empOrders = (emp) => orders.filter(o => o.cashierName === emp.name)
-  const empTotal  = (emp) => empOrders(emp).reduce((s, o) => s + o.total, 0)
+  const empOrders = (emp) => {
+    const dn = `${emp.name} — ${cafeName}`
+    return orders.filter(o => o.cashierName === dn || o.cashierName === emp.name)
+  }
+  const empTotal = (emp) => empOrders(emp).reduce((s, o) => s + o.total, 0)
 
   const confirmDelete = async () => {
     if (!deleteConfig) return
@@ -307,7 +311,7 @@ export default function HRPage() {
       {/* ── تقرير موظف مختار ─────────────────────────────── */}
       {selectedEmp && (() => {
         const eo = empOrders(selectedEmp)
-        const es = shifts.filter(s => s.cashierName === selectedEmp.name)
+        const es = shifts.filter(s => s.cashierName === `${selectedEmp.name} — ${cafeName}` || s.cashierName === selectedEmp.name)
         const total = empTotal(selectedEmp)
         return (
           <div className="bg-white dark:bg-slate-800 rounded-3xl border border-indigo-200 dark:border-indigo-800 shadow-sm overflow-hidden">
