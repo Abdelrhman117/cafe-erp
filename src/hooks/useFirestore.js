@@ -40,6 +40,7 @@ export function useFirestore() {
     let reconnectSyncing = false
     const handleOnline = () => {
       setIsOnline(true)
+<<<<<<< HEAD
       if (reconnectSyncing) return
       const { currentUser: u } = useStore.getState()
       if (!u?.cafeId) return
