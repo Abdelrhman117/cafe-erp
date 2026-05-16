@@ -424,10 +424,11 @@ export const useStore = create((set, get) => ({
     get().sync({ psSessions: next })
   },
   endPsSession: (sessionId) => {
-    const { psSessions, psDevices, orders } = get()
+    const { psSessions, psDevices, orders, shifts } = get()
     const session = psSessions.find(s => s.id === sessionId)
     if (!session) return
     const device      = psDevices.find(d => d.id === session.deviceId)
+    const activeShift = shifts.find(s => s.status === 'open' && s.cashierName === session.cashierName)
     const durationMin = Math.ceil((Date.now() - session.startTime) / 60000)
 
     // تقريب لأقرب 15 دقيقة — كل 15 دقيقة = ربع تعريفة الساعة
@@ -458,8 +459,9 @@ export const useStore = create((set, get) => ({
           price:    cost,
           quantity: 1
         }],
-        subtotal: cost, discountAmount: 0, tax: 0, total: cost,
+        subtotal: cost, discountAmount: 0, serviceCharge: 0, tax: 0, total: cost,
         note:        `بلايستيشن — ${device.name}`,
+        shiftId:     activeShift?.id,
         cashierName: session.cashierName,
         date:        new Date().toLocaleString('ar-EG'),
         timestamp:   Date.now()
