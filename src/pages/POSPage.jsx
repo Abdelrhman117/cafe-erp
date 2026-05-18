@@ -581,7 +581,13 @@ export default function POSPage() {
   const handlePay = () => {
     if (!cart.length) return
     if (currentUser?.role === 'cashier' && !activeShift) { alert('افتح شيفت أولاً'); return }
-    const order = placeOrder(cart, { orderType, tableId: activeTable?.id, tableName: activeTable?.name, shiftId: activeShift?.id, cashierName: currentUser?.displayName, discountType, discountValue: discountAmount > 0 ? dv : 0, note: orderNote })
+    const order = placeOrder(cart, {
+      orderType,
+      tableId:   mode === 'dine_in' ? activeTable?.id   : undefined,
+      tableName: mode === 'dine_in' ? activeTable?.name : undefined,
+      shiftId: activeShift?.id, cashierName: currentUser?.displayName,
+      discountType, discountValue: discountAmount > 0 ? dv : 0, note: orderNote
+    })
 
     if (mode === 'dine_in') {
       const newItems = cart.filter(i => !i.sentToBarista)
