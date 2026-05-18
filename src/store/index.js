@@ -1,10 +1,10 @@
 import { create } from 'zustand'
 import { saveCafe, savePlatform } from '../lib/firestore'
-import { saveLocal } from '../lib/localCache'
+import { saveLocal, loadLocal } from '../lib/localCache'
 import { RAW_MATERIALS as SEED_MATERIALS, PRODUCTS as SEED_PRODUCTS } from '../lib/seed'
 
 const PENDING_DELETES_KEY = 'erp_pending_deletes'
-const PENDING_DELETES_TTL = 86400000 // 24 hours — covers all-day offline scenarios
+const PENDING_DELETES_TTL = 86400000
 
 function loadPendingDeletes() {
   try {
@@ -18,7 +18,6 @@ function savePendingDeletes(obj) {
   try { localStorage.setItem(PENDING_DELETES_KEY, JSON.stringify(obj)) } catch {}
 }
 
-// ─── Default data (من ريسيبي let's Café) ──────────────────
 const DEFAULT_PRODUCTS      = SEED_PRODUCTS
 const DEFAULT_RAW_MATERIALS = SEED_MATERIALS
 
@@ -26,40 +25,37 @@ const DEFAULT_PLATFORM = {
   appName: '',
   tenants: [
     {
-      id:                'cafe1',
-      name:              'let\'s 24',
-      status:            'active',
-      subscriptionEnds:  '2026-12-31',
-      adminEmail:        'admin@cafe1.com',
-      cashiers:          []
+      id:               'cafe1',
+      name:             "let's 24",
+      status:           'active',
+      subscriptionEnds: '2026-12-31',
+      adminEmail:       'admin@cafe1.com',
+      cashiers:         []
     }
   ]
 }
 
-// ─── Store ────────────────────────────────────────────────
 export const useStore = create((set, get) => ({
 
   // ── Auth / Session ──────────────────────────────────────
-  currentUser: null,      // { uid, email, role, cafeId, cafeName, displayName }
+  currentUser: null,
   isDarkMode: localStorage.getItem('erp_darkMode') === 'true',
   isOnline: true,
-  syncStatus: 'idle',     // idle | saving | saved | error
+  syncStatus: 'idle',
 
-  setCurrentUser:  (u)  => set({ currentUser: u }),
-  setIsDarkMode:   (v)  => { localStorage.setItem('erp_darkMode', v); set({ isDarkMode: v }) },
-  setIsOnline:     (v)  => set({ isOnline: v }),
-  setSyncStatus:   (v)  => set({ syncStatus: v }),
+  setCurrentUser:  (u) => set({ currentUser: u }),
+  setIsDarkMode:   (v) => { localStorage.setItem('erp_darkMode', v); set({ isDarkMode: v }) },
+  setIsOnline:     (v) => set({ isOnline: v }),
+  setSyncStatus:   (v) => set({ syncStatus: v }),
 
-  // ── Platform (Super Admin) ──────────────────────────────
+  // ── Platform ────────────────────────────────────────────
   platform: DEFAULT_PLATFORM,
   setPlatform: (data) => set({ platform: data }),
 
   savePlatformField: async (partial) => {
     const next = { ...get().platform, ...partial }
     set({ platform: next })
-    try {
-      await savePlatform(next)
-    } catch (e) { console.error('Platform save error:', e) }
+    try { await savePlatform(next) } catch (e) { console.error('Platform save error:', e) }
   },
 
   // ── Cafe data ────────────────────────────────────────────
@@ -70,15 +66,13 @@ export const useStore = create((set, get) => ({
   tables:            [],
   shifts:            [],
   orders:            [],
-  activeTableOrders: {},   // { tableId: cartItem[] }
+  activeTableOrders: {},
   offers:            [],
   psDevices:         [],
   psSessions:        [],
   isTaxEnabled:      false,
   isServiceEnabled:  false,
 
-  // ── Snapshot guard: prevents stale snapshots from restoring deleted tables ──
-  // { [tableId]: timestamp } — persisted in localStorage, 24h TTL
   _pendingTableDeletes: loadPendingDeletes(),
 
   setCafeData: (data) => {
@@ -88,24 +82,24 @@ export const useStore = create((set, get) => ({
       Object.entries(pending).filter(([, ts]) => now - ts < PENDING_DELETES_TTL)
     )
     savePendingDeletes(activePending)
-    const rawATO = data.activeTableOrders || {}
+    const rawATO  = data.activeTableOrders || {}
     const safeATO = Object.fromEntries(
       Object.entries(rawATO).filter(([id]) => !activePending[id])
     )
     set({
-      products:             data.products?.length    ? data.products          : DEFAULT_PRODUCTS,
-      rawMaterials:         data.rawMaterials?.length ? data.rawMaterials     : DEFAULT_RAW_MATERIALS,
-      employees:            data.employees           || [],
-      expenses:             data.expenses            || [],
-      tables:               data.tables              || [],
-      shifts:               data.shifts              || [],
-      orders:               data.orders              || [],
+      products:             data.products?.length     ? data.products      : DEFAULT_PRODUCTS,
+      rawMaterials:         data.rawMaterials?.length  ? data.rawMaterials  : DEFAULT_RAW_MATERIALS,
+      employees:            data.employees            || [],
+      expenses:             data.expenses             || [],
+      tables:               data.tables               || [],
+      shifts:               data.shifts               || [],
+      orders:               data.orders               || [],
       activeTableOrders:    safeATO,
-      offers:               data.offers              || [],
-      psDevices:            data.psDevices           || [],
-      psSessions:           data.psSessions          || [],
-      isTaxEnabled:         data.isTaxEnabled        ?? false,
-      isServiceEnabled:     data.isServiceEnabled    ?? false,
+      offers:               data.offers               || [],
+      psDevices:            data.psDevices            || [],
+      psSessions:           data.psSessions           || [],
+      isTaxEnabled:         data.isTaxEnabled         ?? false,
+      isServiceEnabled:     data.isServiceEnabled     ?? false,
       _pendingTableDeletes: activePending,
     })
   },
@@ -126,21 +120,15 @@ export const useStore = create((set, get) => ({
     if (!currentUser?.cafeId) return
     const cafeId = currentUser.cafeId
 
-    // ── immediate path: no timer — save fires NOW as a Promise ──
-    // (setTimeout(0) would allow stale Firestore snapshots to fire first
-    //  and restore deleted tables before the write reaches Firestore)
     if (immediate) {
       if (get()._syncTimer) clearTimeout(get()._syncTimer)
       const buffer = { ...get()._syncBuffer, ...partial }
       set({ _syncBuffer: {}, _syncTimer: null, syncStatus: 'saving' })
 
+      // حفظ محلي فوري
       const s = get()
-      saveLocal(cafeId, {
-        products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
-        expenses: s.expenses, tables: s.tables, shifts: s.shifts, orders: s.orders,
-        activeTableOrders: s.activeTableOrders, offers: s.offers, psDevices: s.psDevices,
-        psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled, isServiceEnabled: s.isServiceEnabled
-      })
+      const snap = _buildSnapshot(s)
+      saveLocal(cafeId, snap)
 
       saveCafe(cafeId, buffer)
         .then(() => {
@@ -149,7 +137,6 @@ export const useStore = create((set, get) => ({
         })
         .catch(() => {
           setTimeout(() => {
-            // merge any new changes that arrived during the 1s retry window
             const retryBuffer = { ...buffer, ...get()._syncBuffer }
             set({ _syncBuffer: {} })
             saveCafe(cafeId, retryBuffer)
@@ -166,20 +153,13 @@ export const useStore = create((set, get) => ({
       return
     }
 
-    // ── debounced path: 300ms for non-critical updates ───────
+    // debounced
     set(s => ({ _syncBuffer: { ...s._syncBuffer, ...partial }, syncStatus: 'saving' }))
     if (get()._syncTimer) clearTimeout(get()._syncTimer)
 
-    // Save to localStorage IMMEDIATELY — not inside the timer.
-    // If the browser closes before the 300ms fires, Firestore IndexedDB won't
-    // have the write yet, but localStorage will, so data survives a page reload.
+    // حفظ محلي فوري بدون انتظار الـ timer
     const snap = get()
-    saveLocal(cafeId, {
-      products: snap.products, rawMaterials: snap.rawMaterials, employees: snap.employees,
-      expenses: snap.expenses, tables: snap.tables, shifts: snap.shifts, orders: snap.orders,
-      activeTableOrders: snap.activeTableOrders, offers: snap.offers, psDevices: snap.psDevices,
-      psSessions: snap.psSessions, isTaxEnabled: snap.isTaxEnabled, isServiceEnabled: snap.isServiceEnabled
-    })
+    saveLocal(cafeId, _buildSnapshot(snap))
 
     const timer = setTimeout(async () => {
       const buffer = get()._syncBuffer
@@ -191,7 +171,7 @@ export const useStore = create((set, get) => ({
         await doSave()
         set({ syncStatus: 'saved' })
         setTimeout(() => set(s => s.syncStatus === 'saved' ? { syncStatus: 'idle' } : {}), 2000)
-      } catch (e1) {
+      } catch {
         setTimeout(async () => {
           try {
             await doSave()
@@ -295,13 +275,12 @@ export const useStore = create((set, get) => ({
     get().sync({ offers: next })
   },
 
-  // ── Tax ───────────────────────────────────────────────────
+  // ── Tax / Service ─────────────────────────────────────────
   toggleTax: () => {
     const next = !get().isTaxEnabled
     set({ isTaxEnabled: next })
     get().sync({ isTaxEnabled: next })
   },
-
   toggleService: () => {
     const next = !get().isServiceEnabled
     set({ isServiceEnabled: next })
@@ -310,8 +289,12 @@ export const useStore = create((set, get) => ({
 
   // ── Shifts ────────────────────────────────────────────────
   openShift: (cashierName, startingCash) => {
-    const shift = { id: crypto.randomUUID(), cashierName, startingCash, startTime: new Date().toLocaleString('ar-EG'), timestamp: Date.now(), status: 'open' }
-    const next  = [...get().shifts, shift]
+    const shift = {
+      id: crypto.randomUUID(), cashierName, startingCash,
+      startTime: new Date().toLocaleString('ar-EG'),
+      timestamp: Date.now(), status: 'open'
+    }
+    const next = [...get().shifts, shift]
     set({ shifts: next })
     get().sync({ shifts: next })
     return shift
@@ -329,11 +312,15 @@ export const useStore = create((set, get) => ({
 
   // ── Orders / POS ─────────────────────────────────────────
   placeOrder: (cart, options) => {
-    const { orders, rawMaterials, products, activeTableOrders, isTaxEnabled, isServiceEnabled } = get()
-    const { orderType, tableId, shiftId, cashierName, discountType, discountValue, tableName, note } = options
+    const {
+      orders, rawMaterials, products, activeTableOrders,
+      isTaxEnabled, isServiceEnabled
+    } = get()
+    const {
+      orderType, tableId, shiftId, cashierName,
+      discountType, discountValue, tableName, note
+    } = options
 
-    // حساب المجاميع بالترتيب الصحيح:
-    // subtotal → خصم → خدمة 10% → ضريبة 14%
     const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0)
     let discountAmount = 0
     if (discountValue > 0) {
@@ -341,14 +328,13 @@ export const useStore = create((set, get) => ({
         ? Math.min(subtotal, subtotal * discountValue / 100)
         : Math.min(subtotal, discountValue)
     }
-    const afterDiscount  = subtotal - discountAmount
-    const serviceCharge  = isServiceEnabled ? afterDiscount * 0.10 : 0
-    const afterService   = afterDiscount + serviceCharge
-    const tax            = isTaxEnabled ? afterService * 0.14 : 0
-    const total          = afterService + tax
+    const afterDiscount = subtotal - discountAmount
+    const serviceCharge = isServiceEnabled ? afterDiscount * 0.10 : 0
+    const afterService  = afterDiscount + serviceCharge
+    const tax           = isTaxEnabled ? afterService * 0.14 : 0
+    const total         = afterService + tax
 
-    // خصم من المخزون + تجميع تحذيرات النفاد
-    const newMaterials = rawMaterials.map(rm => ({ ...rm }))
+    const newMaterials     = rawMaterials.map(rm => ({ ...rm }))
     const lowStockWarnings = []
     cart.forEach(ci => {
       const prod = products.find(p => p.id === ci.id)
@@ -357,9 +343,7 @@ export const useStore = create((set, get) => ({
         const idx = newMaterials.findIndex(m => m.id === r.materialId)
         if (idx !== -1) {
           newMaterials[idx].currentStock -= r.amount * ci.quantity
-          if (newMaterials[idx].currentStock < 0) {
-            lowStockWarnings.push(newMaterials[idx].name)
-          }
+          if (newMaterials[idx].currentStock < 0) lowStockWarnings.push(newMaterials[idx].name)
         }
       })
     })
@@ -375,18 +359,15 @@ export const useStore = create((set, get) => ({
     }
 
     const newOrders = [...orders, order]
-    // حذف الطاولة من activeTableOrders عند الدفع
     let newATO = { ...activeTableOrders }
     if (tableId) delete newATO[tableId]
 
-    // Mark tableId as locally-deleted so stale Firestore snapshots can't restore it
     const newPending = tableId
       ? { ...get()._pendingTableDeletes, [tableId]: Date.now() }
       : get()._pendingTableDeletes
     if (tableId) savePendingDeletes(newPending)
 
     set({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO, _pendingTableDeletes: newPending })
-    // immediate: true لضمان حذف الطاولة فوراً دون تأخير 300ms
     get().sync({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO }, { immediate: true })
     return { ...order, lowStockWarnings }
   },
@@ -411,40 +392,102 @@ export const useStore = create((set, get) => ({
     set({ psDevices: next })
     get().sync({ psDevices: next })
   },
+
   deletePsDevice: (id) => {
     const next = get().psDevices.filter(d => d.id !== id)
     set({ psDevices: next })
     get().sync({ psDevices: next })
   },
+
   startPsSession: (deviceId, cashierName) => {
     const device  = get().psDevices.find(d => d.id === deviceId)
-    const session = { id: crypto.randomUUID(), deviceId, deviceName: device?.name || '', startTime: Date.now(), startTimeStr: new Date().toLocaleString('ar-EG'), status: 'active', cashierName }
-    const next    = [...get().psSessions, session]
+    const session = {
+      id: crypto.randomUUID(), deviceId, deviceName: device?.name || '',
+      startTime: Date.now(), startTimeStr: new Date().toLocaleString('ar-EG'),
+      status: 'active', cashierName,
+      linkedTableId: null,   // ربط مع طاولة (اختياري)
+      linkedTableName: null,
+    }
+    const next = [...get().psSessions, session]
     set({ psSessions: next })
     get().sync({ psSessions: next })
   },
+
+  // ─── نقل جلسة PS إلى طاولة ───────────────────────────────
+  // بيضيف آيتم PS في سلة الطاولة المحددة بدون إنهاء الجلسة
+  transferPsToTable: (sessionId, tableId) => {
+    const { psSessions, psDevices, activeTableOrders, tables } = get()
+    const session = psSessions.find(s => s.id === sessionId && s.status === 'active')
+    if (!session) return { ok: false, error: 'الجلسة غير موجودة أو منتهية' }
+
+    const device = psDevices.find(d => d.id === session.deviceId)
+    const table  = tables.find(t => t.id === tableId)
+    if (!table) return { ok: false, error: 'الطاولة غير موجودة' }
+
+    const durationMin  = Math.ceil((Date.now() - session.startTime) / 60000)
+    const quarterUnits = Math.ceil(durationMin / 15)
+    const hourlyRate   = device?.hourlyRate || 0
+    const cost         = quarterUnits * (hourlyRate / 4)
+    const billedMin    = quarterUnits * 15
+
+    // إنشاء آيتم PS لإضافته للسلة
+    const psItem = {
+      id:       `ps_${session.id}`,
+      name:     `🎮 ${device?.name || 'بلايستيشن'} — ${durationMin} دقيقة (محسوب: ${billedMin} دقيقة)`,
+      price:    cost,
+      quantity: 1,
+      category: 'PlayStation',
+      isPs:     true,
+      psSessionId: session.id,
+      cartKey:  `ps_${session.id}`,
+    }
+
+    // إضافة للطاولة
+    const existing = Array.isArray(activeTableOrders[tableId]) ? activeTableOrders[tableId] : []
+    const newTableCart = [...existing, psItem]
+    const newATO = { ...activeTableOrders, [tableId]: newTableCart }
+
+    // تعليم الجلسة كـ "منقولة" وإنهاؤها
+    const endedSession = {
+      ...session,
+      status:      'ended',
+      endTime:     Date.now(),
+      endTimeStr:  new Date().toLocaleString('ar-EG'),
+      durationMin,
+      billedMin,
+      cost,
+      linkedTableId:   tableId,
+      linkedTableName: table.name,
+      transferredToTable: true,
+    }
+    const newSessions = psSessions.map(s => s.id === sessionId ? endedSession : s)
+
+    set({ psSessions: newSessions, activeTableOrders: newATO })
+    get().sync(
+      { psSessions: newSessions, activeTableOrders: newATO },
+      { immediate: true }
+    )
+    return { ok: true, table, cost, billedMin }
+  },
+
   endPsSession: (sessionId) => {
     const { psSessions, psDevices, orders } = get()
     const session = psSessions.find(s => s.id === sessionId)
     if (!session) return
+
     const device      = psDevices.find(d => d.id === session.deviceId)
     const durationMin = Math.ceil((Date.now() - session.startTime) / 60000)
-
-    // تقريب لأقرب 15 دقيقة — كل 15 دقيقة = ربع تعريفة الساعة
-    // مثال: 13 دقيقة → 15 دقيقة (ربع ساعة)، 28 دقيقة → 30 دقيقة (نص ساعة)
-    const quarterUnits  = Math.ceil(durationMin / 15)          // عدد الأرباع
-    const hourlyRate    = device?.hourlyRate || 0
-    const cost          = (quarterUnits * (hourlyRate / 4))     // كل ربع = hourlyRate ÷ 4
-    const billedMin     = quarterUnits * 15                     // الوقت المحسوب فعلياً
+    const quarterUnits = Math.ceil(durationMin / 15)
+    const hourlyRate  = device?.hourlyRate || 0
+    const cost        = quarterUnits * (hourlyRate / 4)
+    const billedMin   = quarterUnits * 15
 
     const ended = {
       ...session,
-      status: 'ended',
-      endTime:     Date.now(),
-      endTimeStr:  new Date().toLocaleString('ar-EG'),
-      durationMin,   // الوقت الفعلي
-      billedMin,     // الوقت المحسوب (مقرّب)
-      cost
+      status:     'ended',
+      endTime:    Date.now(),
+      endTimeStr: new Date().toLocaleString('ar-EG'),
+      durationMin, billedMin, cost
     }
     const newSessions = psSessions.map(s => s.id === sessionId ? ended : s)
 
@@ -458,7 +501,8 @@ export const useStore = create((set, get) => ({
           price:    cost,
           quantity: 1
         }],
-        subtotal: cost, discountAmount: 0, tax: 0, total: cost,
+        subtotal: cost, discountAmount: 0, tax: 0,
+        serviceCharge: 0, total: cost,
         note:        `بلايستيشن — ${device.name}`,
         cashierName: session.cashierName,
         date:        new Date().toLocaleString('ar-EG'),
@@ -468,10 +512,29 @@ export const useStore = create((set, get) => ({
     }
     set({ psSessions: newSessions, orders: newOrders })
     get().sync({ psSessions: newSessions, orders: newOrders })
-  }
+  },
 }))
 
-// ─── Selectors (computed) ─────────────────────────────────
+// ─── helper: بناء snapshot كامل للحفظ المحلي ─────────────
+function _buildSnapshot(s) {
+  return {
+    products:          s.products,
+    rawMaterials:      s.rawMaterials,
+    employees:         s.employees,
+    expenses:          s.expenses,
+    tables:            s.tables,
+    shifts:            s.shifts,
+    orders:            s.orders,
+    activeTableOrders: s.activeTableOrders,
+    offers:            s.offers,
+    psDevices:         s.psDevices,
+    psSessions:        s.psSessions,
+    isTaxEnabled:      s.isTaxEnabled,
+    isServiceEnabled:  s.isServiceEnabled,
+  }
+}
+
+// ─── Selectors ────────────────────────────────────────────
 export const selectActiveShift = (cashierName) => (state) =>
   state.shifts.find(s => s.status === 'open' && s.cashierName === cashierName)
 
@@ -482,13 +545,17 @@ export const selectExpiringProducts = (state) => {
   const now  = new Date()
   const soon = new Date(now.getTime() + 7 * 86400000)
   return {
-    expired: state.products.filter(p => p.expiryDate && new Date(p.expiryDate) <= now),
-    nearExpiry: state.products.filter(p => p.expiryDate && new Date(p.expiryDate) > now && new Date(p.expiryDate) <= soon)
+    expired:    state.products.filter(p => p.expiryDate && new Date(p.expiryDate) <= now),
+    nearExpiry: state.products.filter(p =>
+      p.expiryDate &&
+      new Date(p.expiryDate) > now &&
+      new Date(p.expiryDate) <= soon
+    )
   }
 }
 
 export const selectFinancials = (period) => (state) => {
-  const filter = makeFilter(period)
+  const filter   = makeFilter(period)
   const orders   = (state.orders   || []).filter(o => filter(o.timestamp))
   const expenses = (state.expenses || []).filter(e => filter(new Date(e.date).getTime()))
 
@@ -503,7 +570,11 @@ export const selectFinancials = (period) => (state) => {
       if (mat) cogs += r.amount * item.quantity * mat.costPerUnit
     })
   }))
-  return { revenue, expenses: expTotal, cogs, profit: revenue - expTotal - cogs, orders, ordersCount: orders.length }
+  return {
+    revenue, expenses: expTotal, cogs,
+    profit: revenue - expTotal - cogs,
+    orders, ordersCount: orders.length
+  }
 }
 
 function makeFilter(period) {
@@ -514,8 +585,8 @@ function makeFilter(period) {
     if (period === 'daily')     return d.toDateString() === now.toDateString()
     if (period === 'weekly')    { const s = new Date(now); s.setDate(now.getDate() - now.getDay()); return d >= s }
     if (period === 'monthly')   return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
-    if (period === 'quarterly') return Math.floor(d.getMonth()/3) === Math.floor(now.getMonth()/3) && d.getFullYear() === now.getFullYear()
-    if (period === 'semi')      return Math.floor(d.getMonth()/6) === Math.floor(now.getMonth()/6) && d.getFullYear() === now.getFullYear()
+    if (period === 'quarterly') return Math.floor(d.getMonth() / 3) === Math.floor(now.getMonth() / 3) && d.getFullYear() === now.getFullYear()
+    if (period === 'semi')      return Math.floor(d.getMonth() / 6) === Math.floor(now.getMonth() / 6) && d.getFullYear() === now.getFullYear()
     if (period === 'yearly')    return d.getFullYear() === now.getFullYear()
     return true
   }
