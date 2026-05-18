@@ -141,7 +141,10 @@ export default function HRPage() {
 
   const handleExport = (emp) => exportEmployeeReport({ employee: emp, orders, shifts, cafeName: currentUser?.cafeName || '' })
 
-  const empOrders = (emp) => orders.filter(o => o.cashierName === emp.name)
+  const empOrders = (emp) => {
+    const dn = `${emp.name} — ${currentUser?.cafeName || ''}`
+    return orders.filter(o => o.cashierName === dn || o.cashierName === emp.name)
+  }
   const empTotal  = (emp) => empOrders(emp).reduce((s, o) => s + o.total, 0)
 
   const confirmDelete = async () => {
@@ -307,7 +310,8 @@ export default function HRPage() {
       {/* ── تقرير موظف مختار ─────────────────────────────── */}
       {selectedEmp && (() => {
         const eo = empOrders(selectedEmp)
-        const es = shifts.filter(s => s.cashierName === selectedEmp.name)
+        const dn = `${selectedEmp.name} — ${currentUser?.cafeName || ''}`
+        const es = shifts.filter(s => s.cashierName === dn || s.cashierName === selectedEmp.name)
         const total = empTotal(selectedEmp)
         return (
           <div className="bg-white dark:bg-slate-800 rounded-3xl border border-indigo-200 dark:border-indigo-800 shadow-sm overflow-hidden">

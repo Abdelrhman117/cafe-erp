@@ -1,27 +1,43 @@
 import { useEffect } from 'react'
-import { onAuthStateChanged } from 'firebase/auth'
+import { onAuthStateChanged, signInAnonymously } from 'firebase/auth'
 import { auth } from '../lib/firebase'
 import { subscribePlatform, subscribeCafe } from '../lib/firestore'
 import { loadLocal, saveLocal } from '../lib/localCache'
 import { useStore } from '../store'
 
 const SESSION_KEY = 'erp_session'
+const CASHIER_SESSION_TTL = 24 * 3600 * 1000
 
 // ─── Session helpers ──────────────────────────────────────
 // Cashiers use sessionStorage (clears on browser close — intentional).
 // Admins/owners use localStorage so sessions survive a full browser restart.
 function saveSession(user) {
+  if (!user || user.role === 'customer') return
   try {
-    const store = user?.role === 'cashier' ? sessionStorage : localStorage
-    store.setItem(SESSION_KEY, JSON.stringify(user))
+    if (user?.role === 'cashier') {
+      const payload = JSON.stringify({ ...user, _savedAt: Date.now() })
+      sessionStorage.setItem(SESSION_KEY, payload)
+      localStorage.setItem(SESSION_KEY, payload)
+    } else {
+      localStorage.setItem(SESSION_KEY, JSON.stringify(user))
+    }
   } catch {}
 }
 function loadSession() {
   try {
-    // sessionStorage (cashier) takes priority — cashier is the active shift user
     const fromSession = sessionStorage.getItem(SESSION_KEY)
     if (fromSession) return JSON.parse(fromSession)
-    return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null')
+    const stored = localStorage.getItem(SESSION_KEY)
+    if (!stored) return null
+    const parsed = JSON.parse(stored)
+    if (parsed?.role === 'cashier') {
+      const age = Date.now() - (parsed._savedAt || 0)
+      if (age > CASHIER_SESSION_TTL) {
+        localStorage.removeItem(SESSION_KEY)
+        return null
+      }
+    }
+    return parsed
   } catch { return null }
 }
 function clearSession() {
@@ -106,14 +122,13 @@ export function useFirestore() {
       const storeUser = useStore.getState().currentUser
 
       if (!firebaseUser) {
-        // Firebase signed out completely
-        // Only force logout if the current user is NOT a cashier
-        // (cashier sessions are anonymous and may expire)
-        if (storeUser && storeUser.role !== 'cashier') {
-          clearSession()
-          useStore.getState().setCurrentUser(null)
-        } else if (storeUser?.role === 'cashier') {
-          // Anonymous session expired — cashier must re-login
+        if (storeUser?.role === 'cashier') {
+          signInAnonymously(auth).catch(() => {
+            // Re-auth failed (offline). Keep session — cashier operates from localStorage.
+          })
+          return
+        }
+        if (storeUser) {
           clearSession()
           useStore.getState().setCurrentUser(null)
         }
@@ -154,27 +169,37 @@ export function useFirestore() {
   useEffect(() => {
     if (!currentUser?.cafeId) return
 
-    // تحميل فوري من localStorage قبل ما Firestore يرد (أوفلاين-فيرست)
-    const cached = loadLocal(currentUser.cafeId)
-    if (cached) setCafeData(cached)
+    let localCacheTs = 0
+    let unsub = () => {}
+    let cancelled = false
 
-    const unsub = subscribeCafe(
+    loadLocal(currentUser.cafeId).then(cached => {
+      if (cancelled || !cached) return
+      setCafeData(cached)
+      localCacheTs = cached._ts || 0
+    })
+
+    unsub = subscribeCafe(
       currentUser.cafeId,
       async (snap) => {
         if (snap.exists()) {
-          const data = snap.data()
-          // If this is a stale local-cache snapshot (not yet confirmed by server),
-          // preserve the current activeTableOrders so paid tables don't get restored.
-          // hasPendingWrites=true means it's our own write echoed back — safe to use fully.
-          const isStaleCache = snap.metadata.fromCache && !snap.metadata.hasPendingWrites
+          const data             = snap.data()
+          const isFromCache      = snap.metadata.fromCache
+          const hasPendingWrites = snap.metadata.hasPendingWrites
+          const isStaleCache     = isFromCache && !hasPendingWrites
+
+          if (localCacheTs > (data.updatedAt || 0)) {
+            setSyncStatus('idle')
+            return
+          }
+
           const merged = isStaleCache
             ? { ...data, activeTableOrders: useStore.getState().activeTableOrders }
             : data
           setCafeData(merged)
-          // Save to localStorage only on server-confirmed snapshots — and save the
-          // store's current state (post-filter) not the raw server data, so that
-          // paid/cleared tables never appear in the local cache on next reload.
-          if (!snap.metadata.fromCache) {
+
+          if (!isFromCache) {
+            localCacheTs = 0
             const s = useStore.getState()
             saveLocal(currentUser.cafeId, {
               products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
@@ -183,10 +208,10 @@ export function useFirestore() {
               psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled, isServiceEnabled: s.isServiceEnabled
             })
           }
-          if (snap.metadata?.hasPendingWrites) setSyncStatus('saving')
+
+          if (hasPendingWrites) setSyncStatus('saving')
           else setSyncStatus('idle')
         } else {
-          // Document doesn't exist yet — create it with current store data
           const { products, rawMaterials, employees, expenses, tables,
                   shifts, orders, activeTableOrders, offers, psDevices,
                   psSessions, isTaxEnabled, isServiceEnabled } = useStore.getState()
@@ -207,6 +232,7 @@ export function useFirestore() {
         setSyncStatus('error')
       }
     )
-    return unsub
+
+    return () => { cancelled = true; unsub() }
   }, [currentUser?.cafeId])
 }

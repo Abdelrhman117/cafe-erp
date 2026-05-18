@@ -307,7 +307,7 @@ export const useStore = create((set, get) => ({
       ? { ...s, status: 'closed', endTime: new Date().toLocaleString('ar-EG'), actualCash, totalSales }
       : s)
     set({ shifts: next })
-    get().sync({ shifts: next })
+    get().sync({ shifts: next }, { immediate: true })
   },
 
   // ── Orders / POS ─────────────────────────────────────────
@@ -372,8 +372,8 @@ export const useStore = create((set, get) => ({
     return { ...order, lowStockWarnings }
   },
 
-  holdTable: (tableId, cart) => {
-    const next = { ...get().activeTableOrders, [tableId]: cart }
+  holdTable: (tableId, cart, note = '') => {
+    const next = { ...get().activeTableOrders, [tableId]: { items: cart, note } }
     set({ activeTableOrders: next })
     get().sync({ activeTableOrders: next }, { immediate: true })
   },
@@ -394,9 +394,15 @@ export const useStore = create((set, get) => ({
   },
 
   deletePsDevice: (id) => {
-    const next = get().psDevices.filter(d => d.id !== id)
-    set({ psDevices: next })
-    get().sync({ psDevices: next })
+    const { psDevices, psSessions } = get()
+    const next = psDevices.filter(d => d.id !== id)
+    const updatedSessions = psSessions.map(s =>
+      s.deviceId === id && s.status === 'active'
+        ? { ...s, status: 'ended', endTime: Date.now(), endTimeStr: new Date().toLocaleString('ar-EG'), cost: 0, durationMin: 0, billedMin: 0 }
+        : s
+    )
+    set({ psDevices: next, psSessions: updatedSessions })
+    get().sync({ psDevices: next, psSessions: updatedSessions })
   },
 
   startPsSession: (deviceId, cashierName) => {
@@ -440,12 +446,14 @@ export const useStore = create((set, get) => ({
       isPs:     true,
       psSessionId: session.id,
       cartKey:  `ps_${session.id}`,
+      sentToBarista: true,
     }
 
-    // إضافة للطاولة
-    const existing = Array.isArray(activeTableOrders[tableId]) ? activeTableOrders[tableId] : []
-    const newTableCart = [...existing, psItem]
-    const newATO = { ...activeTableOrders, [tableId]: newTableCart }
+    // إضافة للطاولة (يدعم الصيغتين: array قديم و {items,note} جديد)
+    const saved    = activeTableOrders[tableId]
+    const existing = Array.isArray(saved) ? saved : (saved?.items || [])
+    const currNote = Array.isArray(saved) ? '' : (saved?.note || '')
+    const newATO   = { ...activeTableOrders, [tableId]: { items: [...existing, psItem], note: currNote } }
 
     // تعليم الجلسة كـ "منقولة" وإنهاؤها
     const endedSession = {
@@ -471,7 +479,7 @@ export const useStore = create((set, get) => ({
   },
 
   endPsSession: (sessionId) => {
-    const { psSessions, psDevices, orders } = get()
+    const { psSessions, psDevices, orders, shifts } = get()
     const session = psSessions.find(s => s.id === sessionId)
     if (!session) return
 
@@ -504,6 +512,7 @@ export const useStore = create((set, get) => ({
         subtotal: cost, discountAmount: 0, tax: 0,
         serviceCharge: 0, total: cost,
         note:        `بلايستيشن — ${device.name}`,
+        shiftId:     shifts.find(s => s.status === 'open' && s.cashierName === session.cashierName)?.id,
         cashierName: session.cashierName,
         date:        new Date().toLocaleString('ar-EG'),
         timestamp:   Date.now()

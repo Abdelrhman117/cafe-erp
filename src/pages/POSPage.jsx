@@ -763,6 +763,7 @@ export default function POSPage() {
   const [pendingOpts,   setPendingOpts]   = useState({})
   const [splitOpen,     setSplitOpen]     = useState(false)
   const [splitCount,    setSplitCount]    = useState(2)
+  const [lowStockAlert, setLowStockAlert] = useState([])
 
   const isAdmin       = currentUser?.role === 'admin'
   const isDineIn      = mode === 'dine_in' && activeTable
@@ -842,9 +843,10 @@ export default function POSPage() {
   const selectTable = (t) => {
     setActiveTable(t)
     const saved = activeTableOrders[t.id]
-    setCart((Array.isArray(saved) ? saved : []).map(item => ({
-      ...item, cartKey: item.cartKey || item.id
-    })))
+    const items = Array.isArray(saved) ? saved : (saved?.items || [])
+    const note  = Array.isArray(saved) ? '' : (saved?.note || '')
+    setCart(items.map(item => ({ ...item, cartKey: item.cartKey || item.id })))
+    setOrderNote(note)
     setPendingPrint(false)
   }
 
@@ -878,8 +880,8 @@ export default function POSPage() {
 
     const order = placeOrder(cart, {
       orderType:     isDineIn ? 'dine_in' : 'takeaway',
-      tableId:       activeTable?.id,
-      tableName:     activeTable?.name,
+      tableId:       isDineIn ? activeTable?.id   : undefined,
+      tableName:     isDineIn ? activeTable?.name : undefined,
       shiftId:       activeShift?.id,
       cashierName:   currentUser?.displayName,
       discountType,
@@ -891,18 +893,17 @@ export default function POSPage() {
       const newItems = cart.filter(i => !i.sentToBarista)
       if (newItems.length > 0)
         printBaristaTicket({ items: newItems, tableName: activeTable?.name || 'صالة', note: orderNote })
-      printReceipt({
-        order,
-        cafeName:    currentUser?.cafeName || '',
-        cashierName: currentUser?.displayName || '',
-      })
+      setLastOrder(order)
     } else {
-      printBaristaTicket({ items: cart, tableName: 'تيك أواي', note: orderNote })
+      const baristaItems = cart.filter(i => !i.sentToBarista)
+      if (baristaItems.length > 0)
+        printBaristaTicket({ items: baristaItems, tableName: 'تيك أواي', note: orderNote })
       setLastOrder(order)
     }
 
     setCart([]); setActiveTable(null); setDiscountVal('')
     setOrderNote(''); setCartOpen(false); setPendingPrint(false)
+    if (order.lowStockWarnings?.length > 0) setLowStockAlert(order.lowStockWarnings)
   }
 
   // ── تعليق الطاولة ─────────────────────────────────────────
@@ -910,7 +911,7 @@ export default function POSPage() {
     if (!activeTable || !cart.length) return
     const newItems   = cart.filter(item => !item.sentToBarista)
     const markedCart = cart.map(item => ({ ...item, sentToBarista: true }))
-    holdTable(activeTable.id, markedCart)
+    holdTable(activeTable.id, markedCart, orderNote)
     if (newItems.length > 0)
       printBaristaTicket({ items: newItems, tableName: activeTable.name, note: orderNote })
     setCart([]); setActiveTable(null); setOrderNote('')
@@ -966,7 +967,9 @@ export default function POSPage() {
         {mode === 'dine_in' && !activeTable && (
           <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
             {tables.map(t => {
-              const occ = Array.isArray(activeTableOrders[t.id]) && activeTableOrders[t.id].length > 0
+              const savedTable = activeTableOrders[t.id]
+              const tableItems = Array.isArray(savedTable) ? savedTable : (savedTable?.items || [])
+              const occ = tableItems.length > 0
               return (
                 <button key={t.id} onClick={() => selectTable(t)}
                   className={`p-3 rounded-2xl border-2 flex flex-col items-center gap-1.5 transition-all text-sm
@@ -977,7 +980,7 @@ export default function POSPage() {
                   <span className="font-black text-xs line-clamp-1">{t.name}</span>
                   {occ && (
                     <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-bold">
-                      {activeTableOrders[t.id].length} صنف
+                      {tableItems.length} صنف
                     </span>
                   )}
                 </button>
@@ -1098,7 +1101,7 @@ export default function POSPage() {
           onClose={() => setSplitOpen(false)}
           onPayAll={() => {
             if (currentUser?.role === 'cashier' && !activeShift) { alert('افتح شيفت أولاً'); return }
-            placeOrder(cart, {
+            const order = placeOrder(cart, {
               orderType:     'dine_in',
               tableId:       activeTable?.id,
               tableName:     activeTable?.name,
@@ -1110,6 +1113,8 @@ export default function POSPage() {
             })
             setCart([]); setActiveTable(null); setDiscountVal('')
             setOrderNote(''); setSplitOpen(false); setCartOpen(false)
+            if (order.lowStockWarnings?.length > 0) setLowStockAlert(order.lowStockWarnings)
+            setLastOrder(order)
           }}
         />
       )}
@@ -1182,6 +1187,25 @@ export default function POSPage() {
             🖨️ طباعة الإيصال
           </button>
         </Modal>
+      )}
+
+      {/* ── Low stock alert ── */}
+      {lowStockAlert.length > 0 && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl w-full max-w-sm shadow-2xl text-center">
+            <div className="text-4xl mb-3">⚠️</div>
+            <h3 className="text-lg font-black text-amber-600 mb-2">تنبيه نفاد المخزون</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 font-bold mb-4">المواد الخام التالية نفدت أو أصبحت سالبة:</p>
+            <div className="space-y-1 mb-5">
+              {lowStockAlert.map((name, i) => (
+                <div key={i} className="bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 px-3 py-2 rounded-xl text-sm font-black">{name}</div>
+              ))}
+            </div>
+            <button onClick={() => setLowStockAlert([])} className="w-full bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-2xl font-black transition-colors">
+              حسناً، سأتحقق من المخزون
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
