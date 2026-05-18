@@ -122,7 +122,12 @@ export function useAuth() {
 
   // ── Logout ────────────────────────────────────────────────
   const logout = async () => {
-    try { await fbSignOut(auth) } catch {}
+    const { currentUser: u } = useStore.getState()
+    // Cashiers use anonymous Firebase auth — don't sign out Firebase
+    // so any pending Firestore writes can complete with the still-valid token
+    if (u?.role !== 'cashier') {
+      try { await fbSignOut(auth) } catch {}
+    }
     setCurrentUser(null)
   }
 
