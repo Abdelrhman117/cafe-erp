@@ -1,10 +1,14 @@
-import { useState, useMemo, useEffect } from 'react'
-import { ShoppingCart, Plus, Minus, X, Banknote, Save, Package, Coffee,
-         Armchair, Receipt, Gamepad2, Tag, Play, Power, Clock, Gift, Scissors } from 'lucide-react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import {
+  ShoppingCart, Plus, Minus, X, Banknote, Save, Package, Coffee,
+  Armchair, Receipt, Gamepad2, Tag, Play, Power, Clock, Gift,
+  Scissors, Printer, ArrowRightLeft, CheckCircle
+} from 'lucide-react'
 import { useStore } from '../store'
 import { printReceipt, printBaristaTicket } from '../lib/pdf'
 import { Modal, Btn } from '../components/UI'
 
+// ─── helpers ──────────────────────────────────────────────
 function getOfferPrice(product, offers) {
   if (!product || !offers?.length) return product?.price
   const today = new Date()
@@ -17,10 +21,19 @@ function getOfferPrice(product, offers) {
     return true
   })
   if (!offer) return product.price
-  if (offer.discountType === 'percent') return Math.max(0, product.price * (1 - offer.discountValue / 100))
+  if (offer.discountType === 'percent')
+    return Math.max(0, product.price * (1 - offer.discountValue / 100))
   return Math.max(0, product.price - offer.discountValue)
 }
 
+function makeCartKey(productId, selectedOpts = {}) {
+  const optsKey = Object.entries(selectedOpts).sort().map(([k, v]) => `${k}:${v}`).join(',')
+  return optsKey ? `${productId}__${optsKey}` : productId
+}
+
+const SPLIT_COLORS = ['#4f46e5','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#ec4899']
+
+// ─── Sub-components ────────────────────────────────────────
 function ProductCard({ product, offers, onAdd }) {
   const offerPrice = useMemo(() => getOfferPrice(product, offers), [product, offers])
   const hasOffer   = offerPrice < product.price
@@ -30,54 +43,81 @@ function ProductCard({ product, offers, onAdd }) {
       onClick={() => onAdd(product, offerPrice)}
       className="bg-white dark:bg-slate-800 p-3 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 hover:border-indigo-500 hover:shadow-md transition-all flex flex-col items-center text-center gap-2 group relative"
     >
-      {hasOffer && <div className="absolute top-1.5 right-1.5 bg-rose-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full z-10">عرض</div>}
-      {hasOptions && <div className="absolute top-1.5 left-1.5 bg-indigo-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full z-10">اختيارات</div>}
+      {hasOffer    && <div className="absolute top-1.5 right-1.5 bg-rose-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full z-10">عرض</div>}
+      {hasOptions  && <div className="absolute top-1.5 left-1.5 bg-indigo-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full z-10">اختيارات</div>}
       {product.image
-        ? <img src={product.image} alt={product.name} className="w-14 h-14 rounded-full object-cover group-hover:scale-110 transition-transform border-2 border-slate-100 dark:border-slate-600"
-            onError={e => { e.target.onerror = null; e.target.src = 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=200&q=80' }} />
-        : <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform"><Coffee className="w-6 h-6" /></div>
+        ? <img src={product.image} alt={product.name}
+            className="w-14 h-14 rounded-full object-cover group-hover:scale-110 transition-transform border-2 border-slate-100 dark:border-slate-600"
+            onError={e => { e.target.onerror=null; e.target.src='https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=200&q=80' }} />
+        : <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+            <Coffee className="w-6 h-6" />
+          </div>
       }
       <p className="font-bold text-xs leading-tight line-clamp-2 text-slate-800 dark:text-white">{product.name}</p>
       <div>
         {hasOffer && <div className="text-slate-400 line-through text-[10px]">{product.price} ج</div>}
-        <p className={`font-black text-xs ${hasOffer ? 'text-rose-500' : 'text-indigo-600 dark:text-indigo-400'}`}>{offerPrice.toFixed(0)} ج</p>
+        <p className={`font-black text-xs ${hasOffer ? 'text-rose-500' : 'text-indigo-600 dark:text-indigo-400'}`}>
+          {offerPrice.toFixed(0)} ج
+        </p>
       </div>
     </button>
   )
 }
 
 function CartItem({ item, onInc, onDec, onNoteChange }) {
-  const opts = item.selectedOptions
+  const opts     = item.selectedOptions
   const optsText = opts && Object.keys(opts).length > 0
     ? Object.entries(opts).map(([k, v]) => `${k}: ${v}`).join(' • ')
     : null
+  const isPs = item.isPs
+
   return (
-    <div className="bg-slate-50 dark:bg-slate-700/50 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-600 space-y-1.5">
+    <div className={`p-2.5 rounded-2xl border space-y-1.5
+      ${isPs
+        ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800'
+        : 'bg-slate-50 dark:bg-slate-700/50 border-slate-100 dark:border-slate-600'}`}>
       <div className="flex justify-between items-center gap-2">
         <div className="flex gap-2 items-center min-w-0 flex-1">
-          {item.image
-            ? <img src={item.image} alt={item.name} className="w-9 h-9 rounded-xl object-cover shrink-0" onError={e => { e.target.onerror=null; e.target.src='https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=200&q=80' }} />
-            : <div className="w-9 h-9 bg-indigo-100 dark:bg-indigo-900 text-indigo-500 rounded-xl flex items-center justify-center shrink-0"><Coffee size={13} /></div>
+          {isPs
+            ? <div className="w-9 h-9 bg-indigo-100 dark:bg-indigo-900 text-indigo-500 rounded-xl flex items-center justify-center shrink-0">
+                <Gamepad2 size={14} />
+              </div>
+            : item.image
+              ? <img src={item.image} alt={item.name}
+                  className="w-9 h-9 rounded-xl object-cover shrink-0"
+                  onError={e => { e.target.onerror=null; e.target.src='https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=200&q=80' }} />
+              : <div className="w-9 h-9 bg-indigo-100 dark:bg-indigo-900 text-indigo-500 rounded-xl flex items-center justify-center shrink-0">
+                  <Coffee size={13} />
+                </div>
           }
           <div className="min-w-0">
             <p className="font-bold text-slate-800 dark:text-white text-xs truncate max-w-[110px]">{item.name}</p>
             {optsText && <p className="text-[9px] font-bold text-indigo-400 truncate max-w-[110px]">{optsText}</p>}
-            <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400">{(item.price * item.quantity).toFixed(2)} ج</p>
+            <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400">
+              {(item.price * item.quantity).toFixed(2)} ج
+            </p>
           </div>
         </div>
-        <div className="flex items-center gap-1 bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-600 shrink-0">
-          <button onClick={onInc} className="text-emerald-500 p-1 hover:bg-emerald-50 dark:hover:bg-slate-700 rounded-lg"><Plus size={12} /></button>
-          <span className="font-black w-5 text-center text-xs text-slate-800 dark:text-white">{item.quantity}</span>
-          <button onClick={onDec} className="text-rose-500 p-1 hover:bg-rose-50 dark:hover:bg-slate-700 rounded-lg"><Minus size={12} /></button>
-        </div>
+        {isPs
+          ? <span className="text-[10px] font-black text-indigo-600 bg-indigo-100 dark:bg-indigo-900/60 px-2 py-1 rounded-lg shrink-0">
+              🎮 PS
+            </span>
+          : <div className="flex items-center gap-1 bg-white dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-600 shrink-0">
+              <button onClick={onInc} className="text-emerald-500 p-1 hover:bg-emerald-50 dark:hover:bg-slate-700 rounded-lg"><Plus size={12} /></button>
+              <span className="font-black w-5 text-center text-xs text-slate-800 dark:text-white">{item.quantity}</span>
+              <button onClick={onDec} className="text-rose-500 p-1 hover:bg-rose-50 dark:hover:bg-slate-700 rounded-lg"><Minus size={12} /></button>
+            </div>
+        }
       </div>
-      <input
-        type="text"
-        value={item.itemNote || ''}
-        onChange={e => onNoteChange(e.target.value)}
-        placeholder="ملاحظة للباريستا..."
-        className="w-full px-2.5 py-1.5 text-[10px] font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-700 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:border-amber-400 transition-colors"
-      />
+      {!isPs && (
+        <input
+          type="text"
+          value={item.itemNote || ''}
+          onChange={e => onNoteChange(e.target.value)}
+          placeholder="ملاحظة للباريستا..."
+          className="w-full px-2.5 py-1.5 text-[10px] font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-700 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:border-amber-400 transition-colors"
+        />
+      )}
     </div>
   )
 }
@@ -93,16 +133,122 @@ function LiveTimer({ startTime }) {
   return <span>{hrs > 0 ? `${hrs}س ` : ''}{min % 60}د</span>
 }
 
+// ─── PS Transfer Modal ─────────────────────────────────────
+function PsTransferModal({ session, device, onTransfer, onClose }) {
+  const { tables } = useStore()
+  const [selectedTable, setSelectedTable] = useState(null)
+  const [done, setDone] = useState(null)
+
+  const durationMin  = Math.ceil((Date.now() - session.startTime) / 60000)
+  const quarterUnits = Math.ceil(durationMin / 15)
+  const cost         = quarterUnits * ((device?.hourlyRate || 0) / 4)
+  const billedMin    = quarterUnits * 15
+
+  const handleConfirm = () => {
+    if (!selectedTable) return
+    const result = onTransfer(session.id, selectedTable.id)
+    if (result?.ok) setDone(result)
+  }
+
+  if (done) return (
+    <Modal title="تم النقل بنجاح" onClose={onClose} size="sm">
+      <div className="text-center space-y-4 py-4">
+        <CheckCircle className="w-16 h-16 text-emerald-500 mx-auto" />
+        <p className="font-black text-xl text-slate-800 dark:text-white">
+          تم إضافة الجلسة لطاولة <span className="text-indigo-600">{done.table?.name}</span>
+        </p>
+        <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl p-4 text-sm font-bold text-indigo-700 dark:text-indigo-400 space-y-1">
+          <p>⏱ المدة الفعلية: {durationMin} دقيقة</p>
+          <p>📋 المحسوب: {done.billedMin} دقيقة</p>
+          <p>💰 التكلفة: {done.cost.toFixed(2)} ج</p>
+        </div>
+        <p className="text-sm text-slate-500 font-bold">سيتم تحصيل المبلغ مع فاتورة الطاولة</p>
+        <Btn className="w-full justify-center py-3" onClick={onClose}>موافق</Btn>
+      </div>
+    </Modal>
+  )
+
+  return (
+    <Modal title="نقل جلسة البلايستيشن لطاولة" onClose={onClose} size="sm">
+      <div className="space-y-5">
+        {/* معلومات الجلسة */}
+        <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl p-4 border border-indigo-200 dark:border-indigo-800">
+          <p className="font-black text-indigo-800 dark:text-indigo-300 mb-2 flex items-center gap-2">
+            <Gamepad2 size={16} /> {device?.name || 'بلايستيشن'}
+          </p>
+          <div className="grid grid-cols-3 gap-2 text-center text-xs font-bold">
+            <div className="bg-white dark:bg-slate-800 rounded-xl p-2">
+              <p className="text-lg font-black text-slate-800 dark:text-white">{durationMin}د</p>
+              <p className="text-slate-400">فعلي</p>
+            </div>
+            <div className="bg-white dark:bg-slate-800 rounded-xl p-2">
+              <p className="text-lg font-black text-amber-600">{billedMin}د</p>
+              <p className="text-slate-400">محسوب</p>
+            </div>
+            <div className="bg-white dark:bg-slate-800 rounded-xl p-2">
+              <p className="text-lg font-black text-emerald-600">{cost.toFixed(0)} ج</p>
+              <p className="text-slate-400">التكلفة</p>
+            </div>
+          </div>
+        </div>
+
+        {/* اختيار الطاولة */}
+        <div>
+          <p className="text-sm font-black text-slate-700 dark:text-white mb-3">اختر الطاولة</p>
+          {!tables.length ? (
+            <p className="text-center text-slate-400 font-bold text-sm py-4">
+              لا توجد طاولات مضافة بعد
+            </p>
+          ) : (
+            <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto custom-scrollbar">
+              {tables.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setSelectedTable(t)}
+                  className={`p-3 rounded-2xl border-2 flex flex-col items-center gap-1.5 transition-all text-xs font-black
+                    ${selectedTable?.id === t.id
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-indigo-300'}`}
+                >
+                  <Armchair size={18} />
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2">
+          <Btn variant="secondary" className="flex-1 justify-center" onClick={onClose}>إلغاء</Btn>
+          <Btn
+            className="flex-1 justify-center"
+            disabled={!selectedTable}
+            onClick={handleConfirm}
+          >
+            <ArrowRightLeft size={15} /> نقل للطاولة
+          </Btn>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ─── PlayStation Panel ─────────────────────────────────────
 function PlayStationPanel({ currentUser }) {
-  const { psDevices, psSessions, startPsSession, endPsSession } = useStore()
-  const [, setTick] = useState(0)
+  const { psDevices, psSessions, startPsSession, endPsSession, transferPsToTable } = useStore()
+  const [, setTick]       = useState(0)
+  const [transferTarget, setTransferTarget] = useState(null) // { session, device }
+
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 60000)
     return () => clearInterval(id)
   }, [])
 
   const getSession  = (deviceId) => psSessions.find(s => s.deviceId === deviceId && s.status === 'active')
-  const getLiveCost = (s, device) => Math.ceil(Math.ceil((Date.now() - s.startTime) / 60000) / 60) * (device.hourlyRate || 0)
+  const getLiveCost = (s, device) => {
+    const min = Math.ceil((Date.now() - s.startTime) / 60000)
+    return Math.ceil(min / 15) * ((device?.hourlyRate || 0) / 4)
+  }
 
   if (!psDevices.length) return (
     <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-3">
@@ -113,37 +259,74 @@ function PlayStationPanel({ currentUser }) {
   )
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 overflow-y-auto custom-scrollbar p-0.5">
-      {psDevices.map(device => {
-        const session  = getSession(device.id)
-        const liveCost = session ? getLiveCost(session, device) : 0
-        return (
-          <div key={device.id} className={`bg-white dark:bg-slate-800 p-4 rounded-2xl border-2 shadow-sm transition-all ${session ? 'border-emerald-400 dark:border-emerald-600' : 'border-slate-200 dark:border-slate-700'}`}>
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <h3 className="font-black text-base text-slate-800 dark:text-white">{device.name}</h3>
-                <p className="text-indigo-600 dark:text-indigo-400 font-bold text-xs mt-0.5 flex items-center gap-1">
-                  <Clock size={10} /> {device.hourlyRate} ج/ساعة
-                </p>
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 overflow-y-auto custom-scrollbar p-0.5">
+        {psDevices.map(device => {
+          const session  = getSession(device.id)
+          const liveCost = session ? getLiveCost(session, device) : 0
+          return (
+            <div key={device.id}
+              className={`bg-white dark:bg-slate-800 p-4 rounded-2xl border-2 shadow-sm transition-all
+                ${session ? 'border-emerald-400 dark:border-emerald-600' : 'border-slate-200 dark:border-slate-700'}`}>
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <h3 className="font-black text-base text-slate-800 dark:text-white">{device.name}</h3>
+                  <p className="text-indigo-600 dark:text-indigo-400 font-bold text-xs mt-0.5 flex items-center gap-1">
+                    <Clock size={10} /> {device.hourlyRate} ج/ساعة
+                  </p>
+                </div>
+                <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black
+                  ${session ? 'bg-emerald-100 text-emerald-700 animate-pulse' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
+                  {session ? '🟢 شغال' : '⚪ فاضي'}
+                </span>
               </div>
-              <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black ${session ? 'bg-emerald-100 text-emerald-700 animate-pulse' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
-                {session ? '🟢 شغال' : '⚪ فاضي'}
-              </span>
+
+              {session && (
+                <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-2.5 mb-3 border border-emerald-200 dark:border-emerald-800 space-y-1">
+                  <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                    ⏱ المدة: <LiveTimer startTime={session.startTime} />
+                  </p>
+                  <p className="text-sm font-black text-emerald-600">💰 {liveCost.toFixed(0)} ج</p>
+                </div>
+              )}
+
+              {session ? (
+                <div className="space-y-2">
+                  {/* زر النقل للطاولة */}
+                  <button
+                    onClick={() => setTransferTarget({ session, device })}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-colors">
+                    <ArrowRightLeft size={13} /> نقل لطاولة عميل
+                  </button>
+                  {/* زر إنهاء الجلسة مع فاتورة مستقلة */}
+                  <button
+                    onClick={() => endPsSession(session.id)}
+                    className="w-full bg-rose-600 hover:bg-rose-700 text-white py-2 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-colors">
+                    <Power size={13} /> إنهاء وإصدار فاتورة منفصلة
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => startPsSession(device.id, currentUser?.displayName)}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-colors">
+                  <Play size={13} /> بدء جلسة
+                </button>
+              )}
             </div>
-            {session && (
-              <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-2.5 mb-3 border border-emerald-200 dark:border-emerald-800 space-y-1">
-                <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">⏱ المدة: <LiveTimer startTime={session.startTime} /></p>
-                <p className="text-sm font-black text-emerald-600">💰 {liveCost} ج</p>
-              </div>
-            )}
-            {session
-              ? <button onClick={() => endPsSession(session.id)} className="w-full bg-rose-600 hover:bg-rose-700 text-white py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-colors"><Power size={13} /> إنهاء وإصدار فاتورة</button>
-              : <button onClick={() => startPsSession(device.id, currentUser?.displayName)} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-colors"><Play size={13} /> بدء جلسة</button>
-            }
-          </div>
-        )
-      })}
-    </div>
+          )
+        })}
+      </div>
+
+      {/* نافذة النقل */}
+      {transferTarget && (
+        <PsTransferModal
+          session={transferTarget.session}
+          device={transferTarget.device}
+          onTransfer={transferPsToTable}
+          onClose={() => setTransferTarget(null)}
+        />
+      )}
+    </>
   )
 }
 
@@ -151,7 +334,11 @@ function OffersPanel({ products }) {
   const { offers } = useStore()
   const activeOffers = useMemo(() => {
     const today = new Date()
-    return offers.filter(o => o.isActive && (!o.startDate || today >= new Date(o.startDate)) && (!o.endDate || today <= new Date(o.endDate)))
+    return offers.filter(o =>
+      o.isActive &&
+      (!o.startDate || today >= new Date(o.startDate)) &&
+      (!o.endDate   || today <= new Date(o.endDate))
+    )
   }, [offers])
 
   if (!activeOffers.length) return (
@@ -164,9 +351,12 @@ function OffersPanel({ products }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 overflow-y-auto custom-scrollbar p-0.5">
       {activeOffers.map(offer => {
-        const targetProduct = offer.productId ? products.find(p => String(p.id) === String(offer.productId)) : null
+        const targetProduct = offer.productId
+          ? products.find(p => String(p.id) === String(offer.productId))
+          : null
         return (
-          <div key={offer.id} className="bg-white dark:bg-slate-800 p-4 rounded-2xl border-2 border-emerald-300 dark:border-emerald-700 shadow-sm">
+          <div key={offer.id}
+            className="bg-white dark:bg-slate-800 p-4 rounded-2xl border-2 border-emerald-300 dark:border-emerald-700 shadow-sm">
             <div className="flex justify-between items-start mb-2">
               <h3 className="font-black text-base text-slate-800 dark:text-white leading-tight">{offer.name}</h3>
               <span className="bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400 px-2.5 py-1 rounded-xl font-black text-sm shrink-0">
@@ -179,11 +369,16 @@ function OffersPanel({ products }) {
                   <Coffee size={10} className="text-indigo-400 shrink-0" />
                   <span className="text-indigo-600 dark:text-indigo-400 truncate">{targetProduct.name}</span>
                   <span className="text-slate-400 line-through shrink-0">{targetProduct.price} ج</span>
-                  <span className="text-emerald-600 font-black shrink-0">{getOfferPrice(targetProduct, [offer]).toFixed(0)} ج</span>
+                  <span className="text-emerald-600 font-black shrink-0">
+                    {getOfferPrice(targetProduct, [offer]).toFixed(0)} ج
+                  </span>
                 </div>
               )}
               {offer.category && !targetProduct && (
-                <div className="flex items-center gap-1.5"><Tag size={10} className="text-indigo-400 shrink-0" /><span>فئة: {offer.category}</span></div>
+                <div className="flex items-center gap-1.5">
+                  <Tag size={10} className="text-indigo-400 shrink-0" />
+                  <span>فئة: {offer.category}</span>
+                </div>
               )}
               {!offer.productId && !offer.category && (
                 <p className="text-amber-600 dark:text-amber-400">📢 يُطبق على جميع المنتجات</p>
@@ -197,17 +392,204 @@ function OffersPanel({ products }) {
   )
 }
 
-// ─── cart key helper ──────────────────────────────────────
-function makeCartKey(productId, selectedOpts = {}) {
-  const optsKey = Object.entries(selectedOpts).sort().map(([k, v]) => `${k}:${v}`).join(',')
-  return optsKey ? `${productId}__${optsKey}` : productId
+// ─── Cart Panel ────────────────────────────────────────────
+// مفصول عن POSPage لمنع إعادة mount
+function CartPanel({
+  cart, mode, activeTable, isAdmin,
+  subtotal, discountAmount, discountType, discountVal,
+  setDiscountType, setDiscountVal,
+  isServiceEnabled, serviceCharge,
+  isTaxEnabled, tax, total,
+  handlePrintOnly, handlePay, handleHold,
+  setSplitCount, setSplitOpen,
+  incItem, decItem, setCart, setActiveTable,
+  setCartOpen, orderNote, setOrderNote, updateItemNote,
+  pendingPrint,
+}) {
+  const isDineIn = mode === 'dine_in' && activeTable
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* رأس السلة */}
+      <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 flex justify-between items-center shrink-0">
+        <h3 className="font-black text-lg flex items-center gap-2 text-slate-800 dark:text-white">
+          <ShoppingCart className="text-indigo-500 w-5 h-5" /> السلة
+          {activeTable && (
+            <span className="text-indigo-600 text-xs bg-indigo-100 dark:bg-indigo-900/40 px-2 py-1 rounded-lg">
+              {activeTable.name}
+            </span>
+          )}
+        </h3>
+        <div className="flex gap-2">
+          {activeTable && (
+            <button
+              onClick={() => { setCart([]); setActiveTable(null) }}
+              className="text-[10px] font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded-lg hover:bg-rose-100">
+              إلغاء
+            </button>
+          )}
+          <button
+            className="lg:hidden text-slate-400 bg-slate-200 dark:bg-slate-700 p-1.5 rounded-lg"
+            onClick={() => setCartOpen(false)}>
+            <X size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* الأصناف */}
+      <div className="flex-1 overflow-auto p-3 space-y-2 custom-scrollbar">
+        {!cart.length
+          ? <div className="text-center text-slate-400 mt-16">
+              <Package className="w-10 h-10 mx-auto mb-2 opacity-20" />
+              <p className="font-bold text-sm">السلة فارغة</p>
+            </div>
+          : cart.map(item => (
+              <CartItem
+                key={item.cartKey || item.id}
+                item={item}
+                onInc={() => incItem(item.cartKey || item.id)}
+                onDec={() => decItem(item.cartKey || item.id)}
+                onNoteChange={val => updateItemNote(item.cartKey || item.id, val)}
+              />
+            ))
+        }
+      </div>
+
+      {/* ملاحظات الطلب */}
+      {cart.length > 0 && (
+        <div className="px-3 pb-2">
+          <textarea
+            rows={2} value={orderNote}
+            onChange={e => setOrderNote(e.target.value)}
+            placeholder="ملاحظات (سكر، حساسية، طلب خاص...)"
+            className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-200 outline-none resize-none placeholder:text-slate-400 focus:border-indigo-400 transition-colors"
+          />
+        </div>
+      )}
+
+      {/* خصم المدير */}
+      {isAdmin && cart.length > 0 && (
+        <div className="px-3 pb-2">
+          <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200 dark:border-amber-800">
+            <p className="text-xs font-black text-amber-700 dark:text-amber-400 mb-2 flex items-center gap-1">
+              <Receipt size={12} /> خصم (المدير)
+            </p>
+            <div className="flex gap-2">
+              <div className="flex bg-white dark:bg-slate-800 rounded-xl border border-amber-200 dark:border-amber-700 p-0.5 shrink-0">
+                <button onClick={() => setDiscountType('percent')}
+                  className={`px-2 py-1 rounded-lg text-xs font-black ${discountType==='percent' ? 'bg-amber-500 text-white' : 'text-amber-600'}`}>
+                  %
+                </button>
+                <button onClick={() => setDiscountType('fixed')}
+                  className={`px-2 py-1 rounded-lg text-xs font-black ${discountType==='fixed' ? 'bg-amber-500 text-white' : 'text-amber-600'}`}>
+                  ج
+                </button>
+              </div>
+              <input type="number" min="0" value={discountVal}
+                onChange={e => setDiscountVal(e.target.value)}
+                placeholder={discountType==='percent' ? '%' : 'مبلغ'}
+                className="flex-1 p-2 bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-700 rounded-xl text-xs font-bold text-amber-700 dark:text-amber-300 outline-none text-center"
+              />
+              {discountVal && (
+                <button onClick={() => setDiscountVal('')}
+                  className="p-2 bg-white dark:bg-slate-800 border border-amber-200 rounded-xl text-amber-500">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* المجاميع */}
+      <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-700 shrink-0">
+        <div className="space-y-1 mb-4 text-sm font-bold text-slate-500">
+          <div className="flex justify-between">
+            <span>المجموع</span><span>{subtotal.toFixed(2)} ج</span>
+          </div>
+          {discountAmount > 0 && (
+            <div className="flex justify-between text-emerald-600 font-black">
+              <span>خصم</span><span>-{discountAmount.toFixed(2)} ج</span>
+            </div>
+          )}
+          {isServiceEnabled && (
+            <div className="flex justify-between text-indigo-500">
+              <span>خدمة 10%</span><span>+{serviceCharge.toFixed(2)} ج</span>
+            </div>
+          )}
+          {isTaxEnabled && (
+            <div className="flex justify-between">
+              <span>ضريبة 14%</span><span>+{tax.toFixed(2)} ج</span>
+            </div>
+          )}
+          <div className="flex justify-between font-black text-2xl text-slate-800 dark:text-white pt-2 border-t border-slate-200 dark:border-slate-700">
+            <span>الإجمالي</span>
+            <span className="text-indigo-600 dark:text-indigo-400">{total.toFixed(2)} ج</span>
+          </div>
+        </div>
+
+        {isDineIn ? (
+          // ── وضع الصالة: 4 أزرار ─────────────────────────
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              {/* طباعة فقط */}
+              <button onClick={handlePrintOnly} disabled={!cart.length}
+                className="flex-1 py-2.5 rounded-2xl font-bold flex items-center justify-center gap-1.5 text-xs text-white disabled:opacity-50 bg-slate-600 hover:bg-slate-700 transition-colors">
+                <Printer size={13} /> طباعة
+              </button>
+              {/* تعليق */}
+              <button onClick={handleHold} disabled={!cart.length}
+                className="flex-1 py-2.5 rounded-2xl font-bold flex items-center justify-center gap-1.5 text-xs text-white disabled:opacity-50 bg-amber-500 hover:bg-amber-600 transition-colors">
+                <Save size={13} /> تعليق
+              </button>
+            </div>
+            {/* دفع */}
+            <button onClick={handlePay} disabled={!cart.length}
+              className="w-full py-3 rounded-2xl font-black flex items-center justify-center gap-2 text-sm text-white disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700 transition-colors shadow-lg">
+              <Banknote size={16} /> دفع وإصدار فاتورة
+            </button>
+            {/* تقسيم */}
+            {cart.length > 0 && (
+              <button onClick={() => { setSplitCount(2); setSplitOpen(true) }}
+                className="w-full py-2.5 rounded-2xl font-bold flex items-center justify-center gap-2 text-sm text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-800 transition-colors">
+                <Scissors size={14} /> تقسيم الحساب
+              </button>
+            )}
+          </div>
+        ) : (
+          // ── تيك أواي: طباعة + دفع منفصلان ───────────────
+          <div className="space-y-2">
+            {/* طباعة فقط (بدون إتمام الطلب) */}
+            <button onClick={handlePrintOnly} disabled={!cart.length}
+              className="w-full py-3 rounded-2xl font-bold flex items-center justify-center gap-2 text-sm text-slate-700 dark:text-slate-300 disabled:opacity-50 bg-white dark:bg-slate-700 border-2 border-slate-300 dark:border-slate-600 hover:border-indigo-400 hover:text-indigo-600 transition-colors">
+              <Printer size={16} /> طباعة الفاتورة فقط
+            </button>
+            {/* دفع + طباعة */}
+            <button onClick={handlePay} disabled={!cart.length}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 transition-colors text-base">
+              <Banknote className="w-5 h-5" /> دفع وإصدار فاتورة
+            </button>
+          </div>
+        )}
+
+        {/* تنبيه الطباعة قبل الدفع */}
+        {pendingPrint && (
+          <p className="text-[10px] text-amber-600 font-bold text-center mt-2 animate-pulse">
+            📄 تم الطباعة — اضغط "دفع" لإتمام الطلب
+          </p>
+        )}
+      </div>
+    </div>
+  )
 }
 
-// ─── colors for up to 8 persons ──────────────────────────
-const SPLIT_COLORS = ['#4f46e5','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#ec4899']
-
-// ─── SplitModal — item-based bill splitting ───────────────
-function SplitModal({ cart, splitCount, setSplitCount, isServiceEnabled, isTaxEnabled, cafeName, cashierName, activeTable, onClose, onPayAll }) {
+// ─── Bill Split Modal ─────────────────────────────────────
+function SplitModal({
+  cart, splitCount, setSplitCount,
+  isServiceEnabled, isTaxEnabled,
+  cafeName, cashierName, activeTable,
+  onClose, onPayAll
+}) {
   const [assignments, setAssignments] = useState(() => {
     const init = {}
     cart.forEach(item => { init[item.cartKey || item.id] = 0 })
@@ -222,9 +604,9 @@ function SplitModal({ cart, splitCount, setSplitCount, isServiceEnabled, isTaxEn
     })
   }, [splitCount])
 
-  const persons       = Array.from({ length: splitCount }, (_, i) => i)
-  const getItems      = (idx) => cart.filter(item => (assignments[item.cartKey || item.id] ?? 0) === idx)
-  const calcBill      = (items) => {
+  const persons  = Array.from({ length: splitCount }, (_, i) => i)
+  const getItems = (idx) => cart.filter(item => (assignments[item.cartKey || item.id] ?? 0) === idx)
+  const calcBill = (items) => {
     const sub = items.reduce((s, i) => s + i.price * i.quantity, 0)
     const svc = isServiceEnabled ? +(sub * 0.10).toFixed(2) : 0
     const tax = isTaxEnabled     ? +((sub + svc) * 0.14).toFixed(2) : 0
@@ -252,8 +634,6 @@ function SplitModal({ cart, splitCount, setSplitCount, isServiceEnabled, isTaxEn
   return (
     <Modal title="تقسيم الحساب بالأصناف" onClose={onClose} size="lg">
       <div className="space-y-4">
-
-        {/* عدد الأشخاص */}
         <div className="flex items-center justify-center gap-4">
           <button onClick={() => setSplitCount(c => Math.max(2, c - 1))}
             className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-700 font-black text-xl text-slate-700 dark:text-white hover:bg-slate-200 transition-colors">−</button>
@@ -262,17 +642,21 @@ function SplitModal({ cart, splitCount, setSplitCount, isServiceEnabled, isTaxEn
             className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-700 font-black text-xl text-slate-700 dark:text-white hover:bg-slate-200 transition-colors">+</button>
         </div>
 
-        {/* توزيع الأصناف على الأشخاص */}
         <div className="space-y-1.5 max-h-44 overflow-y-auto custom-scrollbar pr-0.5">
           <p className="text-[11px] font-black text-slate-400 mb-2">اضغط رقم الشخص على كل صنف:</p>
           {cart.map(item => {
             const key      = item.cartKey || item.id
             const assigned = assignments[key] ?? 0
             return (
-              <div key={key} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700/50 px-3 py-2 rounded-xl border border-slate-100 dark:border-slate-600">
+              <div key={key}
+                className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700/50 px-3 py-2 rounded-xl border border-slate-100 dark:border-slate-600">
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-xs text-slate-800 dark:text-white truncate">{item.quantity}× {item.name}</p>
-                  <p className="text-[10px] font-black text-indigo-500">{(item.price * item.quantity).toFixed(2)} ج</p>
+                  <p className="font-bold text-xs text-slate-800 dark:text-white truncate">
+                    {item.quantity}× {item.name}
+                  </p>
+                  <p className="text-[10px] font-black text-indigo-500">
+                    {(item.price * item.quantity).toFixed(2)} ج
+                  </p>
                 </div>
                 <div className="flex gap-1 shrink-0">
                   {persons.map(idx => (
@@ -280,7 +664,9 @@ function SplitModal({ cart, splitCount, setSplitCount, isServiceEnabled, isTaxEn
                       onClick={() => setAssignments(prev => ({ ...prev, [key]: idx }))}
                       style={assigned === idx ? { backgroundColor: SPLIT_COLORS[idx] } : undefined}
                       className={`w-7 h-7 rounded-lg text-xs font-black transition-all
-                        ${assigned === idx ? 'text-white shadow-sm' : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-300'}`}>
+                        ${assigned === idx
+                          ? 'text-white shadow-sm'
+                          : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-300'}`}>
                       {idx + 1}
                     </button>
                   ))}
@@ -290,7 +676,6 @@ function SplitModal({ cart, splitCount, setSplitCount, isServiceEnabled, isTaxEn
           })}
         </div>
 
-        {/* فاتورة كل شخص */}
         <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar pr-0.5">
           {persons.map(idx => {
             const items = getItems(idx)
@@ -301,15 +686,20 @@ function SplitModal({ cart, splitCount, setSplitCount, isServiceEnabled, isTaxEn
                   style={{ backgroundColor: SPLIT_COLORS[idx] + '18' }}>
                   <div className="flex items-center gap-2">
                     <span className="text-white text-xs font-black px-2.5 py-0.5 rounded-lg"
-                      style={{ backgroundColor: SPLIT_COLORS[idx] }}>شخص {idx + 1}</span>
+                      style={{ backgroundColor: SPLIT_COLORS[idx] }}>
+                      شخص {idx + 1}
+                    </span>
                     {!items.length && <span className="text-xs text-slate-400 font-bold">لا يوجد أصناف</span>}
                   </div>
-                  <span className="font-black text-base text-slate-800 dark:text-white">{bill.total.toFixed(2)} ج</span>
+                  <span className="font-black text-base text-slate-800 dark:text-white">
+                    {bill.total.toFixed(2)} ج
+                  </span>
                 </div>
                 {items.length > 0 && (
                   <div className="px-3 pt-2 pb-3 bg-white dark:bg-slate-800 space-y-1">
                     {items.map(i => (
-                      <div key={i.cartKey || i.id} className="flex justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                      <div key={i.cartKey || i.id}
+                        className="flex justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400">
                         <span className="truncate ml-2">{i.quantity}× {i.name}</span>
                         <span className="shrink-0">{(i.price * i.quantity).toFixed(2)} ج</span>
                       </div>
@@ -325,8 +715,8 @@ function SplitModal({ cart, splitCount, setSplitCount, isServiceEnabled, isTaxEn
                       </div>
                     )}
                     <button onClick={() => printPerson(idx)}
-                      className="w-full mt-2 py-2 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-indigo-400 hover:text-indigo-600 bg-slate-50 dark:bg-slate-700/50 transition-colors">
-                      🖨️ طباعة فاتورة شخص {idx + 1}
+                      className="w-full mt-2 py-2 rounded-xl font-bold text-xs border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-indigo-400 hover:text-indigo-600 bg-slate-50 dark:bg-slate-700/50 transition-colors flex items-center justify-center gap-1.5">
+                      <Printer size={12} /> طباعة فاتورة شخص {idx + 1}
                     </button>
                   </div>
                 )}
@@ -345,147 +735,70 @@ function SplitModal({ cart, splitCount, setSplitCount, isServiceEnabled, isTaxEn
   )
 }
 
-// ─── CartPanel — defined OUTSIDE POSPage to prevent remount on every render ─
-function CartPanel({
-  cart, mode, activeTable, isAdmin, subtotal, discountAmount, discountType,
-  discountVal, setDiscountType, setDiscountVal, isServiceEnabled, serviceCharge,
-  isTaxEnabled, tax, total,
-  handleHold, handlePay, setSplitCount, setSplitOpen, incItem, decItem,
-  setCart, setActiveTable, setCartOpen, orderNote, setOrderNote, updateItemNote
-}) {
-  return (
-    <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 flex justify-between items-center shrink-0">
-        <h3 className="font-black text-lg flex items-center gap-2 text-slate-800 dark:text-white">
-          <ShoppingCart className="text-indigo-500 w-5 h-5" /> السلة
-          {activeTable && <span className="text-indigo-600 text-xs bg-indigo-100 dark:bg-indigo-900/40 px-2 py-1 rounded-lg">{activeTable.name}</span>}
-        </h3>
-        <div className="flex gap-2">
-          {activeTable && <button onClick={() => { setCart([]); setActiveTable(null) }} className="text-[10px] font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded-lg hover:bg-rose-100">إلغاء</button>}
-          <button className="lg:hidden text-slate-400 bg-slate-200 dark:bg-slate-700 p-1.5 rounded-lg" onClick={() => setCartOpen(false)}><X size={16} /></button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-auto p-3 space-y-2 custom-scrollbar">
-        {!cart.length
-          ? <div className="text-center text-slate-400 mt-16"><Package className="w-10 h-10 mx-auto mb-2 opacity-20" /><p className="font-bold text-sm">السلة فارغة</p></div>
-          : cart.map(item => (
-              <CartItem
-                key={item.cartKey || item.id}
-                item={item}
-                onInc={() => incItem(item.cartKey || item.id)}
-                onDec={() => decItem(item.cartKey || item.id)}
-                onNoteChange={val => updateItemNote(item.cartKey || item.id, val)}
-              />
-            ))
-        }
-      </div>
-
-      {cart.length > 0 && (
-        <div className="px-3 pb-2">
-          <textarea
-            rows={2}
-            value={orderNote}
-            onChange={e => setOrderNote(e.target.value)}
-            placeholder="ملاحظات (سكر، حساسية، طلب خاص...)"
-            className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-200 outline-none resize-none placeholder:text-slate-400 focus:border-indigo-400 transition-colors"
-          />
-        </div>
-      )}
-
-      {isAdmin && cart.length > 0 && (
-        <div className="px-3 pb-2">
-          <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200 dark:border-amber-800">
-            <p className="text-xs font-black text-amber-700 dark:text-amber-400 mb-2 flex items-center gap-1"><Receipt size={12} /> خصم (المدير)</p>
-            <div className="flex gap-2">
-              <div className="flex bg-white dark:bg-slate-800 rounded-xl border border-amber-200 dark:border-amber-700 p-0.5 shrink-0">
-                <button onClick={() => setDiscountType('percent')} className={`px-2 py-1 rounded-lg text-xs font-black ${discountType==='percent'?'bg-amber-500 text-white':'text-amber-600'}`}>%</button>
-                <button onClick={() => setDiscountType('fixed')}   className={`px-2 py-1 rounded-lg text-xs font-black ${discountType==='fixed'?'bg-amber-500 text-white':'text-amber-600'}`}>ج</button>
-              </div>
-              <input type="number" min="0" value={discountVal} onChange={e => setDiscountVal(e.target.value)} placeholder={discountType==='percent'?'%':'مبلغ'}
-                className="flex-1 p-2 bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-700 rounded-xl text-xs font-bold text-amber-700 dark:text-amber-300 outline-none text-center" />
-              {discountVal && <button onClick={() => setDiscountVal('')} className="p-2 bg-white dark:bg-slate-800 border border-amber-200 rounded-xl text-amber-500"><X size={13} /></button>}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-700 shrink-0">
-        <div className="space-y-1 mb-4 text-sm font-bold text-slate-500">
-          <div className="flex justify-between"><span>المجموع</span><span>{subtotal.toFixed(2)} ج</span></div>
-          {discountAmount > 0 && <div className="flex justify-between text-emerald-600 font-black"><span>خصم</span><span>-{discountAmount.toFixed(2)} ج</span></div>}
-          {isServiceEnabled && <div className="flex justify-between text-indigo-500"><span>خدمة 10%</span><span>+{serviceCharge.toFixed(2)} ج</span></div>}
-          {isTaxEnabled && <div className="flex justify-between"><span>ضريبة 14%</span><span>+{tax.toFixed(2)} ج</span></div>}
-          <div className="flex justify-between font-black text-2xl text-slate-800 dark:text-white pt-2 border-t border-slate-200 dark:border-slate-700">
-            <span>الإجمالي</span><span className="text-indigo-600 dark:text-indigo-400">{total.toFixed(2)} ج</span>
-          </div>
-        </div>
-
-        {mode === 'dine_in' && activeTable
-          ? <div className="space-y-2">
-              <div className="flex gap-2">
-                <button onClick={handleHold} disabled={!cart.length}
-                  className="flex-1 py-3 rounded-2xl font-bold flex items-center justify-center gap-1.5 text-sm text-white disabled:opacity-50 bg-amber-500 hover:bg-amber-600 transition-colors">
-                  <Save size={14} /> تعليق + طباعة
-                </button>
-                <button onClick={handlePay} disabled={!cart.length}
-                  className="flex-1 py-3 rounded-2xl font-bold flex items-center justify-center gap-1.5 text-sm text-white disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700 transition-colors">
-                  <Banknote size={14} /> دفع
-                </button>
-              </div>
-              {cart.length > 0 && (
-                <button onClick={() => { setSplitCount(2); setSplitOpen(true) }}
-                  className="w-full py-2.5 rounded-2xl font-bold flex items-center justify-center gap-2 text-sm text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 border border-indigo-200 dark:border-indigo-800 transition-colors">
-                  <Scissors size={14} /> تقسيم الحساب
-                </button>
-              )}
-            </div>
-          : <button onClick={handlePay} disabled={!cart.length} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 transition-colors text-base">
-              <Banknote className="w-5 h-5" /> دفع وإصدار فاتورة
-            </button>
-        }
-      </div>
-    </div>
-  )
-}
-
+// ═══════════════════════════════════════════════════════════
+// الصفحة الرئيسية POS
+// ═══════════════════════════════════════════════════════════
 export default function POSPage() {
-  const { products, offers, tables, isTaxEnabled, isServiceEnabled, activeTableOrders, currentUser, placeOrder, holdTable } = useStore()
-  const activeShift = useStore(s => s.shifts.find(sh => sh.status === 'open' && sh.cashierName === s.currentUser?.displayName))
+  const {
+    products, offers, tables, isTaxEnabled, isServiceEnabled,
+    activeTableOrders, currentUser, placeOrder, holdTable
+  } = useStore()
 
-  const [mode,          setMode]          = useState('takeaway')
-  const [activeTable,   setActiveTable]   = useState(null)
-  const [cart,          setCart]          = useState([])
-  const [catFilter,     setCatFilter]     = useState('all')
-  const [discountType,  setDiscountType]  = useState('percent')
-  const [discountVal,   setDiscountVal]   = useState('')
-  const [lastOrder,     setLastOrder]     = useState(null)
-  const [cartOpen,      setCartOpen]      = useState(false)
-  const [orderNote,     setOrderNote]     = useState('')
+  const activeShift = useStore(s =>
+    s.shifts.find(sh => sh.status === 'open' && sh.cashierName === s.currentUser?.displayName)
+  )
 
-  // Options modal
-  const [optionsTarget, setOptionsTarget] = useState(null) // { product, price }
+  const [mode,         setMode]         = useState('takeaway')
+  const [activeTable,  setActiveTable]  = useState(null)
+  const [cart,         setCart]         = useState([])
+  const [catFilter,    setCatFilter]    = useState('all')
+  const [discountType, setDiscountType] = useState('percent')
+  const [discountVal,  setDiscountVal]  = useState('')
+  const [lastOrder,    setLastOrder]    = useState(null)
+  const [cartOpen,     setCartOpen]     = useState(false)
+  const [orderNote,    setOrderNote]    = useState('')
+  const [pendingPrint, setPendingPrint] = useState(false) // طُبعت بدون دفع
+
+  const [optionsTarget, setOptionsTarget] = useState(null)
   const [pendingOpts,   setPendingOpts]   = useState({})
-
-  // Bill split
-  const [splitOpen,  setSplitOpen]  = useState(false)
-  const [splitCount, setSplitCount] = useState(2)
+  const [splitOpen,     setSplitOpen]     = useState(false)
+  const [splitCount,    setSplitCount]    = useState(2)
 
   const isAdmin       = currentUser?.role === 'admin'
+  const isDineIn      = mode === 'dine_in' && activeTable
   const isProductMode = mode === 'takeaway' || mode === 'dine_in'
-  const orderType     = mode === 'dine_in' ? 'dine_in' : 'takeaway'
 
   const categories       = useMemo(() => [...new Set(products.map(p => p.category).filter(Boolean))], [products])
-  const filteredProducts = useMemo(() => catFilter === 'all' ? products : products.filter(p => p.category === catFilter), [products, catFilter])
+  const filteredProducts = useMemo(() =>
+    catFilter === 'all' ? products : products.filter(p => p.category === catFilter),
+    [products, catFilter]
+  )
 
   const activeOffersCount = useMemo(() => {
     const today = new Date()
-    return offers.filter(o => o.isActive && (!o.startDate || today >= new Date(o.startDate)) && (!o.endDate || today <= new Date(o.endDate))).length
+    return offers.filter(o =>
+      o.isActive &&
+      (!o.startDate || today >= new Date(o.startDate)) &&
+      (!o.endDate   || today <= new Date(o.endDate))
+    ).length
   }, [offers])
+
   const activePsCount = useStore(s => s.psSessions.filter(ss => ss.status === 'active').length)
 
-  // ── Add to cart (with or without options) ────────────────
-  const addToCart = (product, price, selectedOpts = {}) => {
+  // ── حسابات المجاميع ──────────────────────────────────────
+  const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0)
+  const dv       = parseFloat(discountVal) || 0
+  const discountAmount = isAdmin && dv > 0
+    ? (discountType === 'percent' ? Math.min(subtotal, subtotal * dv / 100) : Math.min(subtotal, dv))
+    : 0
+  const afterDiscount = subtotal - discountAmount
+  const serviceCharge = isServiceEnabled ? afterDiscount * 0.10 : 0
+  const afterService  = afterDiscount + serviceCharge
+  const tax           = isTaxEnabled ? afterService * 0.14 : 0
+  const total         = afterService + tax
+
+  // ── إضافة للسلة ──────────────────────────────────────────
+  const addToCart = useCallback((product, price, selectedOpts = {}) => {
     if (mode === 'dine_in' && !activeTable) { alert('اختر طاولة أولاً'); return }
     const key = makeCartKey(product.id, selectedOpts)
     setCart(prev => {
@@ -497,95 +810,141 @@ export default function POSPage() {
         selectedOptions: Object.keys(selectedOpts).length ? selectedOpts : undefined
       }]
     })
-  }
+    setPendingPrint(false)
+  }, [mode, activeTable])
 
-  const addItem = (product, price) => {
+  const addItem = useCallback((product, price) => {
     if (product.options?.length > 0) {
       setPendingOpts({})
       setOptionsTarget({ product, price })
       return
     }
     addToCart(product, price)
-  }
+  }, [addToCart])
 
-  const incItem        = key => setCart(prev => prev.map(i => (i.cartKey || i.id) === key ? { ...i, quantity: i.quantity + 1 } : i))
-  const decItem        = key => setCart(prev => {
-    const it = prev.find(i => (i.cartKey || i.id) === key)
-    if (it?.quantity <= 1) return prev.filter(i => (i.cartKey || i.id) !== key)
-    return prev.map(i => (i.cartKey || i.id) === key ? { ...i, quantity: i.quantity - 1 } : i)
-  })
-  const updateItemNote = (key, val) => setCart(prev => prev.map(i => (i.cartKey || i.id) === key ? { ...i, itemNote: val } : i))
+  const incItem = useCallback(key =>
+    setCart(prev => prev.map(i => (i.cartKey || i.id) === key ? { ...i, quantity: i.quantity + 1 } : i))
+  , [])
 
-  const subtotal       = cart.reduce((s, i) => s + i.price * i.quantity, 0)
-  const dv             = parseFloat(discountVal) || 0
-  const discountAmount = isAdmin && dv > 0 ? (discountType === 'percent' ? Math.min(subtotal, subtotal * dv / 100) : Math.min(subtotal, dv)) : 0
-  const afterDiscount  = subtotal - discountAmount
-  const serviceCharge  = isServiceEnabled ? afterDiscount * 0.10 : 0
-  const afterService   = afterDiscount + serviceCharge
-  const tax            = isTaxEnabled ? afterService * 0.14 : 0
-  const total          = afterService + tax
+  const decItem = useCallback(key =>
+    setCart(prev => {
+      const it = prev.find(i => (i.cartKey || i.id) === key)
+      if (it?.quantity <= 1) return prev.filter(i => (i.cartKey || i.id) !== key)
+      return prev.map(i => (i.cartKey || i.id) === key ? { ...i, quantity: i.quantity - 1 } : i)
+    })
+  , [])
 
-  const handlePay = () => {
-    if (!cart.length) return
-    if (currentUser?.role === 'cashier' && !activeShift) { alert('افتح شيفت أولاً'); return }
-    const order = placeOrder(cart, { orderType, tableId: activeTable?.id, tableName: activeTable?.name, shiftId: activeShift?.id, cashierName: currentUser?.displayName, discountType, discountValue: discountAmount > 0 ? dv : 0, note: orderNote })
+  const updateItemNote = useCallback((key, val) =>
+    setCart(prev => prev.map(i => (i.cartKey || i.id) === key ? { ...i, itemNote: val } : i))
+  , [])
 
-    if (mode === 'dine_in') {
-      // For dine_in: print barista ticket for any items not yet sent, then print receipt
-      const newItems = cart.filter(i => !i.sentToBarista)
-      if (newItems.length > 0) printBaristaTicket({ items: newItems, tableName: activeTable?.name || 'صالة', note: orderNote })
-      printReceipt({ order, cafeName: currentUser?.cafeName, cashierName: currentUser?.displayName })
-    } else {
-      // For takeaway: always send all items to barista, then show receipt modal
-      printBaristaTicket({ items: cart, tableName: 'تيك أواي', note: orderNote })
-      setLastOrder(order)
-    }
-    setCart([]); setActiveTable(null); setDiscountVal(''); setOrderNote(''); setCartOpen(false)
-  }
-
-  const handleHold = () => {
-    if (!activeTable || !cart.length) return
-
-    // الأصناف الجديدة = اللي مفيهاش علامة sentToBarista (لم تُرسل للباريستا بعد)
-    const newItems = cart.filter(item => !item.sentToBarista)
-
-    // احفظ السلة مع تعليم كل الأصناف كـ "تم الإرسال للباريستا"
-    const markedCart = cart.map(item => ({ ...item, sentToBarista: true }))
-
-    holdTable(activeTable.id, markedCart)
-
-    if (newItems.length > 0) printBaristaTicket({ items: newItems, tableName: activeTable.name, note: orderNote })
-
-    setCart([]); setActiveTable(null); setOrderNote(''); setCartOpen(false)
-  }
-
+  // ── اختيار طاولة ─────────────────────────────────────────
   const selectTable = (t) => {
     setActiveTable(t)
     const saved = activeTableOrders[t.id]
-    setCart((Array.isArray(saved) ? saved : []).map(item => ({ ...item, cartKey: item.cartKey || item.id })))
+    setCart((Array.isArray(saved) ? saved : []).map(item => ({
+      ...item, cartKey: item.cartKey || item.id
+    })))
+    setPendingPrint(false)
+  }
+
+  // ── طباعة فقط (بدون إتمام الطلب) ─────────────────────────
+  const handlePrintOnly = () => {
+    if (!cart.length) return
+    // بناء فاتورة مؤقتة للطباعة
+    const tempOrder = {
+      id: `preview_${Date.now()}`,
+      items: cart,
+      subtotal, discountAmount, discountType, discountValue: dv,
+      serviceCharge, tax, total,
+      cashierName: currentUser?.displayName,
+      date: new Date().toLocaleString('ar-EG'),
+      note: isDineIn ? `صالة — ${activeTable?.name}` : 'تيك أواي',
+      orderNote: orderNote || '',
+    }
+    printReceipt({
+      order: tempOrder,
+      cafeName:    currentUser?.cafeName || '',
+      cashierName: currentUser?.displayName || '',
+      preview:     true,  // علامة أن هذا طباعة معاينة
+    })
+    setPendingPrint(true)
+  }
+
+  // ── دفع وإتمام الطلب ─────────────────────────────────────
+  const handlePay = () => {
+    if (!cart.length) return
+    if (currentUser?.role === 'cashier' && !activeShift) { alert('افتح شيفت أولاً'); return }
+
+    const order = placeOrder(cart, {
+      orderType:     isDineIn ? 'dine_in' : 'takeaway',
+      tableId:       activeTable?.id,
+      tableName:     activeTable?.name,
+      shiftId:       activeShift?.id,
+      cashierName:   currentUser?.displayName,
+      discountType,
+      discountValue: discountAmount > 0 ? dv : 0,
+      note:          orderNote,
+    })
+
+    if (isDineIn) {
+      const newItems = cart.filter(i => !i.sentToBarista)
+      if (newItems.length > 0)
+        printBaristaTicket({ items: newItems, tableName: activeTable?.name || 'صالة', note: orderNote })
+      printReceipt({
+        order,
+        cafeName:    currentUser?.cafeName || '',
+        cashierName: currentUser?.displayName || '',
+      })
+    } else {
+      printBaristaTicket({ items: cart, tableName: 'تيك أواي', note: orderNote })
+      setLastOrder(order)
+    }
+
+    setCart([]); setActiveTable(null); setDiscountVal('')
+    setOrderNote(''); setCartOpen(false); setPendingPrint(false)
+  }
+
+  // ── تعليق الطاولة ─────────────────────────────────────────
+  const handleHold = () => {
+    if (!activeTable || !cart.length) return
+    const newItems   = cart.filter(item => !item.sentToBarista)
+    const markedCart = cart.map(item => ({ ...item, sentToBarista: true }))
+    holdTable(activeTable.id, markedCart)
+    if (newItems.length > 0)
+      printBaristaTicket({ items: newItems, tableName: activeTable.name, note: orderNote })
+    setCart([]); setActiveTable(null); setOrderNote('')
+    setCartOpen(false); setPendingPrint(false)
+  }
+
+  // ── الـ props المشتركة للـ CartPanel ──────────────────────
+  const cartPanelProps = {
+    cart, mode, activeTable, isAdmin,
+    subtotal, discountAmount, discountType, discountVal,
+    setDiscountType, setDiscountVal,
+    isServiceEnabled, serviceCharge,
+    isTaxEnabled, tax, total,
+    handlePrintOnly, handlePay, handleHold,
+    setSplitCount, setSplitOpen,
+    incItem, decItem, setCart, setActiveTable,
+    setCartOpen, orderNote, setOrderNote, updateItemNote,
+    pendingPrint,
   }
 
   const TABS = [
-    { id: 'takeaway',    label: 'تيك أواي',  icon: <ShoppingCart size={14} /> },
-    { id: 'dine_in',     label: 'صالة',       icon: <Armchair size={14} /> },
-    { id: 'playstation', label: 'بلايستيشن',  icon: <Gamepad2 size={14} />, badge: activePsCount },
-    { id: 'offers',      label: 'العروض',      icon: <Tag size={14} />,      badge: activeOffersCount },
+    { id: 'takeaway',    label: 'تيك أواي',   icon: <ShoppingCart size={14} /> },
+    { id: 'dine_in',     label: 'صالة',        icon: <Armchair size={14} /> },
+    { id: 'playstation', label: 'بلايستيشن',   icon: <Gamepad2 size={14} />, badge: activePsCount },
+    { id: 'offers',      label: 'العروض',       icon: <Tag size={14} />,      badge: activeOffersCount },
   ]
-
-  const cartPanelProps = {
-    cart, mode, activeTable, isAdmin, subtotal, discountAmount, discountType,
-    discountVal, setDiscountType, setDiscountVal, isServiceEnabled, serviceCharge,
-    isTaxEnabled, tax, total,
-    handleHold, handlePay, setSplitCount, setSplitOpen, incItem, decItem,
-    setCart, setActiveTable, setCartOpen, orderNote, setOrderNote, updateItemNote
-  }
 
   return (
     <div className="flex flex-col lg:flex-row h-full gap-4 p-3 md:p-5 overflow-hidden relative">
 
+      {/* ── المنطقة الرئيسية ─────────────────────────────── */}
       <div className="flex-1 flex flex-col gap-3 overflow-hidden pb-16 lg:pb-0">
 
-        {/* Mode tabs */}
+        {/* التبويبات */}
         <div className="flex bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl w-fit border border-slate-200 dark:border-slate-700 gap-0.5">
           {TABS.map(tab => (
             <button key={tab.id} onClick={() => setMode(tab.id)}
@@ -603,7 +962,7 @@ export default function POSPage() {
           ))}
         </div>
 
-        {/* Tables */}
+        {/* اختيار الطاولة */}
         {mode === 'dine_in' && !activeTable && (
           <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
             {tables.map(t => {
@@ -611,24 +970,35 @@ export default function POSPage() {
               return (
                 <button key={t.id} onClick={() => selectTable(t)}
                   className={`p-3 rounded-2xl border-2 flex flex-col items-center gap-1.5 transition-all text-sm
-                    ${occ ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 hover:border-indigo-400 text-slate-700 dark:text-slate-300'}`}>
+                    ${occ
+                      ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700'
+                      : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 hover:border-indigo-400 text-slate-700 dark:text-slate-300'}`}>
                   <Armchair className="w-6 h-6" />
                   <span className="font-black text-xs line-clamp-1">{t.name}</span>
-                  {occ && <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-bold">{activeTableOrders[t.id].length} صنف</span>}
+                  {occ && (
+                    <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-bold">
+                      {activeTableOrders[t.id].length} صنف
+                    </span>
+                  )}
                 </button>
               )
             })}
-            {!tables.length && <p className="col-span-full text-center text-slate-400 font-bold py-4 text-sm">لا توجد طاولات</p>}
+            {!tables.length && (
+              <p className="col-span-full text-center text-slate-400 font-bold py-4 text-sm">لا توجد طاولات</p>
+            )}
           </div>
         )}
 
+        {/* المنتجات */}
         {isProductMode && (
           <>
             <div className="flex gap-2 overflow-x-auto no-scrollbar py-0.5">
               {['all', ...categories].map(c => (
                 <button key={c} onClick={() => setCatFilter(c)}
                   className={`whitespace-nowrap px-4 py-2 rounded-xl font-bold text-xs transition-all
-                    ${catFilter===c ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-300'}`}>
+                    ${catFilter === c
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-300'}`}>
                   {c === 'all' ? 'الكل' : c}
                 </button>
               ))}
@@ -645,20 +1015,29 @@ export default function POSPage() {
         {mode === 'offers'      && <OffersPanel products={products} />}
       </div>
 
-      {/* Mobile bottom bar */}
+      {/* ── شريط سفلي للموبايل ───────────────────────────── */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 p-3 border-t border-slate-200 dark:border-slate-700 z-30 flex justify-between items-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
         <span className="font-black text-indigo-600 dark:text-indigo-400 text-base">{total.toFixed(2)} ج</span>
-        <button onClick={() => setCartOpen(true)} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 text-sm shadow-lg">
-          <ShoppingCart size={16} /> السلة ({cart.length})
-        </button>
+        <div className="flex gap-2">
+          {cart.length > 0 && (
+            <button onClick={handlePrintOnly}
+              className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 p-2.5 rounded-xl">
+              <Printer size={16} />
+            </button>
+          )}
+          <button onClick={() => setCartOpen(true)}
+            className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 text-sm shadow-lg">
+            <ShoppingCart size={16} /> السلة ({cart.length})
+          </button>
+        </div>
       </div>
 
-      {/* Desktop cart */}
+      {/* ── Desktop cart ─────────────────────────────────── */}
       <div className="hidden lg:flex w-[340px] xl:w-[380px] bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex-col shrink-0">
         <CartPanel {...cartPanelProps} />
       </div>
 
-      {/* Mobile cart drawer */}
+      {/* ── Mobile cart drawer ───────────────────────────── */}
       {cartOpen && (
         <>
           <div className="fixed inset-0 bg-black/60 z-30 lg:hidden backdrop-blur-sm" onClick={() => setCartOpen(false)} />
@@ -668,7 +1047,7 @@ export default function POSPage() {
         </>
       )}
 
-      {/* ── Options selection modal ── */}
+      {/* ── نافذة الاختيارات ──────────────────────────────── */}
       {optionsTarget && (
         <Modal title={optionsTarget.product.name} onClose={() => setOptionsTarget(null)}>
           <div className="space-y-5">
@@ -705,7 +1084,7 @@ export default function POSPage() {
         </Modal>
       )}
 
-      {/* ── Bill split modal ── */}
+      {/* ── نافذة تقسيم الحساب ───────────────────────────── */}
       {splitOpen && (
         <SplitModal
           cart={cart}
@@ -720,22 +1099,22 @@ export default function POSPage() {
           onPayAll={() => {
             if (currentUser?.role === 'cashier' && !activeShift) { alert('افتح شيفت أولاً'); return }
             placeOrder(cart, {
-              orderType: 'dine_in',
-              tableId: activeTable?.id,
-              tableName: activeTable?.name,
-              shiftId: activeShift?.id,
-              cashierName: currentUser?.displayName,
+              orderType:     'dine_in',
+              tableId:       activeTable?.id,
+              tableName:     activeTable?.name,
+              shiftId:       activeShift?.id,
+              cashierName:   currentUser?.displayName,
               discountType,
               discountValue: discountAmount > 0 ? dv : 0,
-              note: orderNote,
+              note:          orderNote,
             })
-            setCart([]); setActiveTable(null); setDiscountVal(''); setOrderNote('')
-            setSplitOpen(false); setCartOpen(false)
+            setCart([]); setActiveTable(null); setDiscountVal('')
+            setOrderNote(''); setSplitOpen(false); setCartOpen(false)
           }}
         />
       )}
 
-      {/* ── Receipt modal ── */}
+      {/* ── نافذة الإيصال (تيك أواي) ─────────────────────── */}
       {lastOrder && (
         <Modal title="إيصال الدفع" onClose={() => setLastOrder(null)}>
           <div className="print-section p-6 bg-white text-black text-center font-mono border-2 border-dashed border-slate-300 rounded-2xl mx-auto max-w-[280px]">
@@ -759,12 +1138,28 @@ export default function POSPage() {
               ))}
             </div>
             <div className="border-t border-dashed border-slate-300 pt-2 space-y-1 text-sm mb-2">
-              <div className="flex justify-between font-bold text-slate-600"><span>المجموع</span><span>{lastOrder.subtotal?.toFixed(2)}</span></div>
-              {lastOrder.discountAmount > 0 && <div className="flex justify-between font-black text-emerald-600"><span>خصم</span><span>-{lastOrder.discountAmount.toFixed(2)}</span></div>}
-              {lastOrder.serviceCharge > 0 && <div className="flex justify-between font-bold text-indigo-500"><span>خدمة 10%</span><span>+{lastOrder.serviceCharge.toFixed(2)}</span></div>}
-              {lastOrder.tax > 0 && <div className="flex justify-between font-bold text-slate-600"><span>ضريبة 14%</span><span>+{lastOrder.tax.toFixed(2)}</span></div>}
+              <div className="flex justify-between font-bold text-slate-600">
+                <span>المجموع</span><span>{lastOrder.subtotal?.toFixed(2)}</span>
+              </div>
+              {lastOrder.discountAmount > 0 && (
+                <div className="flex justify-between font-black text-emerald-600">
+                  <span>خصم</span><span>-{lastOrder.discountAmount.toFixed(2)}</span>
+                </div>
+              )}
+              {lastOrder.serviceCharge > 0 && (
+                <div className="flex justify-between font-bold text-indigo-500">
+                  <span>خدمة 10%</span><span>+{lastOrder.serviceCharge.toFixed(2)}</span>
+                </div>
+              )}
+              {lastOrder.tax > 0 && (
+                <div className="flex justify-between font-bold text-slate-600">
+                  <span>ضريبة 14%</span><span>+{lastOrder.tax.toFixed(2)}</span>
+                </div>
+              )}
             </div>
-            <div className="flex justify-between font-black text-xl border-t-2 border-slate-800 pt-3"><span>الإجمالي</span><span>{lastOrder.total.toFixed(2)} ج</span></div>
+            <div className="flex justify-between font-black text-xl border-t-2 border-slate-800 pt-3">
+              <span>الإجمالي</span><span>{lastOrder.total.toFixed(2)} ج</span>
+            </div>
             {lastOrder.orderNote && (
               <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] font-bold text-amber-800 text-right">
                 📝 {lastOrder.orderNote}
@@ -777,7 +1172,12 @@ export default function POSPage() {
             )}
             <p className="text-[10px] mt-4 text-slate-500">الكاشير: {currentUser?.displayName}</p>
           </div>
-          <button onClick={() => printReceipt({ order: lastOrder, cafeName: currentUser?.cafeName, cashierName: currentUser?.displayName })}
+          <button
+            onClick={() => printReceipt({
+              order:       lastOrder,
+              cafeName:    currentUser?.cafeName,
+              cashierName: currentUser?.displayName
+            })}
             className="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 no-print shadow-lg text-base">
             🖨️ طباعة الإيصال
           </button>
