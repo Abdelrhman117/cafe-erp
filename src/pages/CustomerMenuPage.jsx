@@ -88,10 +88,7 @@ export default function CustomerMenuPage() {
                       {op.toFixed(0)} ج.م
                     </span>
                   </div>
-                  {p.stock <= 0
-                    ? <span className="text-xs font-bold text-rose-600 bg-rose-50 dark:bg-rose-900/30 px-2.5 py-1 rounded-lg">نفدت الكمية</span>
-                    : <span className="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-2.5 py-1 rounded-lg">متاح ✓</span>
-                  }
+                  <span className="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-2.5 py-1 rounded-lg">متاح ✓</span>
                 </div>
               </div>
             </div>
