@@ -94,15 +94,26 @@ function LiveTimer({ startTime }) {
 }
 
 function PlayStationPanel({ currentUser }) {
-  const { psDevices, psSessions, startPsSession, endPsSession } = useStore()
-  const [, setTick] = useState(0)
+  const { psDevices, psSessions, startPsSession, endPsSession,
+          tables, activeTableOrders, transferPsToTable } = useStore()
+  const [, setTick]       = useState(0)
+  const [transferModal, setTransferModal] = useState(null) // sessionId being transferred
+
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 60000)
     return () => clearInterval(id)
   }, [])
 
   const getSession  = (deviceId) => psSessions.find(s => s.deviceId === deviceId && s.status === 'active')
-  const getLiveCost = (s, device) => Math.ceil(Math.ceil((Date.now() - s.startTime) / 60000) / 60) * (device.hourlyRate || 0)
+  const getLiveCost = (s, device) => {
+    const min = Math.ceil((Date.now() - s.startTime) / 60000)
+    return Math.ceil(Math.max(min, 1) / 15) * ((device.hourlyRate || 0) / 4)
+  }
+
+  const handleTransfer = (tableId) => {
+    transferPsToTable(transferModal, tableId)
+    setTransferModal(null)
+  }
 
   if (!psDevices.length) return (
     <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-3">
@@ -113,37 +124,78 @@ function PlayStationPanel({ currentUser }) {
   )
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 overflow-y-auto custom-scrollbar p-0.5">
-      {psDevices.map(device => {
-        const session  = getSession(device.id)
-        const liveCost = session ? getLiveCost(session, device) : 0
-        return (
-          <div key={device.id} className={`bg-white dark:bg-slate-800 p-4 rounded-2xl border-2 shadow-sm transition-all ${session ? 'border-emerald-400 dark:border-emerald-600' : 'border-slate-200 dark:border-slate-700'}`}>
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <h3 className="font-black text-base text-slate-800 dark:text-white">{device.name}</h3>
-                <p className="text-indigo-600 dark:text-indigo-400 font-bold text-xs mt-0.5 flex items-center gap-1">
-                  <Clock size={10} /> {device.hourlyRate} ج/ساعة
-                </p>
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 overflow-y-auto custom-scrollbar p-0.5">
+        {psDevices.map(device => {
+          const session  = getSession(device.id)
+          const liveCost = session ? getLiveCost(session, device) : 0
+          return (
+            <div key={device.id} className={`bg-white dark:bg-slate-800 p-4 rounded-2xl border-2 shadow-sm transition-all ${session ? 'border-emerald-400 dark:border-emerald-600' : 'border-slate-200 dark:border-slate-700'}`}>
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <h3 className="font-black text-base text-slate-800 dark:text-white">{device.name}</h3>
+                  <p className="text-indigo-600 dark:text-indigo-400 font-bold text-xs mt-0.5 flex items-center gap-1">
+                    <Clock size={10} /> {device.hourlyRate} ج/ساعة
+                  </p>
+                </div>
+                <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black ${session ? 'bg-emerald-100 text-emerald-700 animate-pulse' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
+                  {session ? '🟢 شغال' : '⚪ فاضي'}
+                </span>
               </div>
-              <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black ${session ? 'bg-emerald-100 text-emerald-700 animate-pulse' : 'bg-slate-100 dark:bg-slate-700 text-slate-500'}`}>
-                {session ? '🟢 شغال' : '⚪ فاضي'}
-              </span>
+              {session && (
+                <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-2.5 mb-3 border border-emerald-200 dark:border-emerald-800 space-y-1">
+                  <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">⏱ المدة: <LiveTimer startTime={session.startTime} /></p>
+                  <p className="text-sm font-black text-emerald-600">💰 {liveCost.toFixed(0)} ج</p>
+                </div>
+              )}
+              {session ? (
+                <div className="space-y-1.5">
+                  <button onClick={() => endPsSession(session.id)}
+                    className="w-full bg-rose-600 hover:bg-rose-700 text-white py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-colors">
+                    <Power size={13} /> إنهاء وإصدار فاتورة
+                  </button>
+                  {tables.length > 0 && (
+                    <button onClick={() => setTransferModal(session.id)}
+                      className="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-colors">
+                      <Armchair size={13} /> إضافة لطاولة
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <button onClick={() => startPsSession(device.id, currentUser?.displayName)}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-colors">
+                  <Play size={13} /> بدء جلسة
+                </button>
+              )}
             </div>
-            {session && (
-              <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-2.5 mb-3 border border-emerald-200 dark:border-emerald-800 space-y-1">
-                <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">⏱ المدة: <LiveTimer startTime={session.startTime} /></p>
-                <p className="text-sm font-black text-emerald-600">💰 {liveCost} ج</p>
+          )
+        })}
+      </div>
+
+      {transferModal && (
+        <Modal title="اختر الطاولة لإضافة البلايستيشن" onClose={() => setTransferModal(null)} size="sm">
+          {!tables.length
+            ? <p className="text-center text-slate-400 font-bold py-4">لا توجد طاولات مضافة</p>
+            : <div className="grid grid-cols-2 gap-2">
+                {tables.map(t => {
+                  const saved = activeTableOrders[t.id]
+                  const items = Array.isArray(saved) ? saved : (saved?.items || [])
+                  const occ   = items.length > 0
+                  return (
+                    <button key={t.id} onClick={() => handleTransfer(t.id)}
+                      className={`p-3 rounded-2xl border-2 flex flex-col items-center gap-1 transition-all
+                        ${occ ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 hover:border-indigo-400 text-slate-700 dark:text-slate-300'}`}>
+                      <Armchair className="w-5 h-5" />
+                      <span className="font-black text-xs">{t.name}</span>
+                      {occ && <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-bold">{items.length} صنف</span>}
+                    </button>
+                  )
+                })}
               </div>
-            )}
-            {session
-              ? <button onClick={() => endPsSession(session.id)} className="w-full bg-rose-600 hover:bg-rose-700 text-white py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-colors"><Power size={13} /> إنهاء وإصدار فاتورة</button>
-              : <button onClick={() => startPsSession(device.id, currentUser?.displayName)} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition-colors"><Play size={13} /> بدء جلسة</button>
-            }
-          </div>
-        )
-      })}
-    </div>
+          }
+        </Modal>
+      )}
+    </>
   )
 }
 
@@ -532,10 +584,9 @@ export default function POSPage() {
     const order = placeOrder(cart, { orderType, tableId: activeTable?.id, tableName: activeTable?.name, shiftId: activeShift?.id, cashierName: currentUser?.displayName, discountType, discountValue: discountAmount > 0 ? dv : 0, note: orderNote })
 
     if (mode === 'dine_in') {
-      // For dine_in: print barista ticket for any items not yet sent, then print receipt
       const newItems = cart.filter(i => !i.sentToBarista)
       if (newItems.length > 0) printBaristaTicket({ items: newItems, tableName: activeTable?.name || 'صالة', note: orderNote })
-      printReceipt({ order, cafeName: currentUser?.cafeName, cashierName: currentUser?.displayName })
+      setLastOrder(order)
     } else {
       // For takeaway: always send all items to barista, then show receipt modal
       printBaristaTicket({ items: cart, tableName: 'تيك أواي', note: orderNote })
@@ -554,7 +605,7 @@ export default function POSPage() {
     // احفظ السلة مع تعليم كل الأصناف كـ "تم الإرسال للباريستا"
     const markedCart = cart.map(item => ({ ...item, sentToBarista: true }))
 
-    holdTable(activeTable.id, markedCart)
+    holdTable(activeTable.id, markedCart, orderNote)
 
     if (newItems.length > 0) printBaristaTicket({ items: newItems, tableName: activeTable.name, note: orderNote })
 
@@ -564,7 +615,10 @@ export default function POSPage() {
   const selectTable = (t) => {
     setActiveTable(t)
     const saved = activeTableOrders[t.id]
-    setCart((Array.isArray(saved) ? saved : []).map(item => ({ ...item, cartKey: item.cartKey || item.id })))
+    const items = Array.isArray(saved) ? saved : (saved?.items || [])
+    const note  = Array.isArray(saved) ? '' : (saved?.note || '')
+    setCart(items.map(item => ({ ...item, cartKey: item.cartKey || item.id })))
+    setOrderNote(note)
   }
 
   const TABS = [
@@ -609,14 +663,16 @@ export default function POSPage() {
         {mode === 'dine_in' && !activeTable && (
           <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
             {tables.map(t => {
-              const occ = Array.isArray(activeTableOrders[t.id]) && activeTableOrders[t.id].length > 0
+              const savedTable = activeTableOrders[t.id]
+              const tableItems = Array.isArray(savedTable) ? savedTable : (savedTable?.items || [])
+              const occ = tableItems.length > 0
               return (
                 <button key={t.id} onClick={() => selectTable(t)}
                   className={`p-3 rounded-2xl border-2 flex flex-col items-center gap-1.5 transition-all text-sm
                     ${occ ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 hover:border-indigo-400 text-slate-700 dark:text-slate-300'}`}>
                   <Armchair className="w-6 h-6" />
                   <span className="font-black text-xs line-clamp-1">{t.name}</span>
-                  {occ && <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-bold">{activeTableOrders[t.id].length} صنف</span>}
+                  {occ && <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-bold">{tableItems.length} صنف</span>}
                 </button>
               )
             })}

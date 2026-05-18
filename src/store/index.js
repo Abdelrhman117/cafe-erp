@@ -394,10 +394,45 @@ export const useStore = create((set, get) => ({
     return { ...order, lowStockWarnings }
   },
 
-  holdTable: (tableId, cart) => {
-    const next = { ...get().activeTableOrders, [tableId]: cart }
+  holdTable: (tableId, cart, note = '') => {
+    const next = { ...get().activeTableOrders, [tableId]: { items: cart, note } }
     set({ activeTableOrders: next })
     get().sync({ activeTableOrders: next }, { immediate: true })
+  },
+
+  transferPsToTable: (sessionId, tableId) => {
+    const { psSessions, psDevices, activeTableOrders } = get()
+    const session = psSessions.find(s => s.id === sessionId)
+    if (!session) return null
+    const device      = psDevices.find(d => d.id === session.deviceId)
+    const durationMin = Math.ceil((Date.now() - session.startTime) / 60000)
+    const quarterUnits = Math.ceil(Math.max(durationMin, 1) / 15)
+    const hourlyRate  = device?.hourlyRate || 0
+    const cost        = quarterUnits * (hourlyRate / 4)
+    const billedMin   = quarterUnits * 15
+
+    const ended = {
+      ...session, status: 'ended',
+      endTime: Date.now(), endTimeStr: new Date().toLocaleString('ar-EG'),
+      durationMin, billedMin, cost, transferredToTable: tableId
+    }
+    const newSessions = psSessions.map(s => s.id === sessionId ? ended : s)
+
+    const psItem = {
+      id: `ps_${sessionId}`,
+      name: `🎮 ${device?.name || 'بلايستيشن'} — ${billedMin} دقيقة`,
+      price: cost, quantity: 1,
+      cartKey: `ps_${sessionId}`,
+      sentToBarista: true,
+    }
+    const saved        = activeTableOrders[tableId]
+    const currentItems = Array.isArray(saved) ? saved : (saved?.items || [])
+    const currentNote  = Array.isArray(saved) ? '' : (saved?.note  || '')
+    const newATO       = { ...activeTableOrders, [tableId]: { items: [...currentItems, psItem], note: currentNote } }
+
+    set({ psSessions: newSessions, activeTableOrders: newATO })
+    get().sync({ psSessions: newSessions, activeTableOrders: newATO }, { immediate: true })
+    return { cost, billedMin, durationMin, deviceName: device?.name }
   },
 
   clearAllTableOrders: () => {
