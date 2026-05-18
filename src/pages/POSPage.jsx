@@ -588,8 +588,8 @@ export default function POSPage() {
       if (newItems.length > 0) printBaristaTicket({ items: newItems, tableName: activeTable?.name || 'صالة', note: orderNote })
       setLastOrder(order)
     } else {
-      // For takeaway: always send all items to barista, then show receipt modal
-      printBaristaTicket({ items: cart, tableName: 'تيك أواي', note: orderNote })
+      const baristaItems = cart.filter(i => !i.sentToBarista)
+      if (baristaItems.length > 0) printBaristaTicket({ items: baristaItems, tableName: 'تيك أواي', note: orderNote })
       setLastOrder(order)
     }
     setCart([]); setActiveTable(null); setDiscountVal(''); setOrderNote(''); setCartOpen(false)
@@ -796,7 +796,7 @@ export default function POSPage() {
           onClose={() => setSplitOpen(false)}
           onPayAll={() => {
             if (currentUser?.role === 'cashier' && !activeShift) { alert('افتح شيفت أولاً'); return }
-            placeOrder(cart, {
+            const order = placeOrder(cart, {
               orderType: 'dine_in',
               tableId: activeTable?.id,
               tableName: activeTable?.name,
@@ -808,6 +808,8 @@ export default function POSPage() {
             })
             setCart([]); setActiveTable(null); setDiscountVal(''); setOrderNote('')
             setSplitOpen(false); setCartOpen(false)
+            if (order.lowStockWarnings?.length > 0) setLowStockAlert(order.lowStockWarnings)
+            setLastOrder(order)
           }}
         />
       )}
