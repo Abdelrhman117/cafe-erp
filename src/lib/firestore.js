@@ -18,6 +18,9 @@ export const subscribeCafe = (cafeId, cb, errCb) => onSnapshot(CAFE_DOC(cafeId),
 export const saveCafe      = (cafeId, data) =>
   setDoc(CAFE_DOC(cafeId), { ...stripUndefined(data), updatedAt: Date.now() }, { merge: true })
 
+export const clearCafeOrders = (cafeId) =>
+  setDoc(CAFE_DOC(cafeId), { orders: [], updatedAt: Date.now() }, { merge: true })
+
 /*
 ══════════════════════════════════════════════════════════════
   FIRESTORE SECURITY RULES — الصق هذا في Firebase Console

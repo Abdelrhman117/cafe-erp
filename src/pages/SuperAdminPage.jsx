@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Building2, Plus, Settings, Users } from 'lucide-react'
+import { Building2, Plus, Settings, Users, Trash2 } from 'lucide-react'
 import { useStore } from '../store'
-import { Modal, DataTable, Badge, Btn, Input, PageHeader } from '../components/UI'
+import { clearCafeOrders } from '../lib/firestore'
+import { Modal, DataTable, Badge, Btn, Input, PageHeader, ConfirmDelete } from '../components/UI'
 
 export default function SuperAdminPage() {
   const { platform, savePlatformField } = useStore()
@@ -9,9 +10,11 @@ export default function SuperAdminPage() {
 
   const [showTenantModal,   setShowTenantModal]   = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
-  const [editTenant,   setEditTenant]   = useState(null)
-  const [form,         setForm]         = useState({})
-  const [appNameForm,  setAppNameForm]  = useState(platform?.appName || '')
+  const [editTenant,        setEditTenant]        = useState(null)
+  const [clearTarget,       setClearTarget]       = useState(null)
+  const [clearing,          setClearing]          = useState(false)
+  const [form,              setForm]              = useState({})
+  const [appNameForm,       setAppNameForm]       = useState(platform?.appName || '')
 
   const openAdd = () => {
     setEditTenant(null)
@@ -43,6 +46,17 @@ export default function SuperAdminPage() {
       t.id === id ? { ...t, status: t.status === 'active' ? 'suspended' : 'active' } : t
     )
     savePlatformField({ tenants: next })
+  }
+
+  const handleClearOrders = async () => {
+    if (!clearTarget) return
+    setClearing(true)
+    try {
+      await clearCafeOrders(clearTarget.id)
+    } finally {
+      setClearing(false)
+      setClearTarget(null)
+    }
   }
 
   const handleSaveSettings = (e) => {
@@ -124,7 +138,7 @@ export default function SuperAdminPage() {
               </Badge>
             </td>
             <td className="p-4 text-center">
-              <div className="flex justify-center gap-2">
+              <div className="flex justify-center gap-2 flex-wrap">
                 <button onClick={() => toggleStatus(t.id)}
                   className="bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-800 dark:text-white transition-colors">
                   {t.status === 'active' ? 'إيقاف' : 'تفعيل'}
@@ -132,6 +146,10 @@ export default function SuperAdminPage() {
                 <button onClick={() => openEdit(t)}
                   className="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-200 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors">
                   تعديل
+                </button>
+                <button onClick={() => setClearTarget(t)}
+                  className="bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 hover:bg-rose-200 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors">
+                  <Trash2 size={11} /> مسح الطلبات
                 </button>
               </div>
             </td>
@@ -177,6 +195,15 @@ export default function SuperAdminPage() {
             </Btn>
           </form>
         </Modal>
+      )}
+
+      {/* Clear orders confirmation */}
+      {clearTarget && (
+        <ConfirmDelete
+          message={`سيتم مسح جميع طلبات "${clearTarget.name}" نهائياً ولا يمكن التراجع عن هذا الإجراء.`}
+          onConfirm={handleClearOrders}
+          onCancel={() => clearing ? null : setClearTarget(null)}
+        />
       )}
 
       {/* Settings modal */}
