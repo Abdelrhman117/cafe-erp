@@ -4,6 +4,13 @@ import { useStore } from '../store'
 import { useAuth } from '../hooks/useAuth'
 import { DataTable, Badge, PageHeader } from '../components/UI'
 
+const PAYMENT_METHODS = [
+  { id: 'cash',     label: 'كاش',        emoji: '💵' },
+  { id: 'visa',     label: 'فيزا',        emoji: '💳' },
+  { id: 'instapay', label: 'إنستا باي',   emoji: '📲' },
+  { id: 'vodafone', label: 'فودافون كاش', emoji: '📱' },
+]
+
 export default function ShiftsPage() {
   const { shifts, orders, currentUser, openShift, closeShift } = useStore()
   const { logout } = useAuth()
@@ -53,14 +60,33 @@ export default function ShiftsPage() {
           ) : (
             <form onSubmit={handleCloseShift} className="max-w-sm">
               <h3 className="font-black text-lg text-slate-800 dark:text-white mb-4 flex items-center gap-2"><Power size={18} className="text-rose-500" /> تقفيل الوردية</h3>
-              <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-2xl mb-4 border border-indigo-100 dark:border-indigo-800">
-                <div className="flex justify-between text-sm font-bold text-indigo-800 dark:text-indigo-300 mb-2">
+              <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-2xl mb-4 border border-indigo-100 dark:border-indigo-800 space-y-2">
+                <div className="flex justify-between text-sm font-bold text-indigo-800 dark:text-indigo-300">
                   <span>العهدة المستلمة</span><span>{activeShift.startingCash} ج</span>
                 </div>
-                <div className="flex justify-between text-sm font-black text-indigo-800 dark:text-indigo-300 border-t border-indigo-200 dark:border-indigo-700 pt-2">
-                  <span>مبيعات الشيفت</span>
-                  <span>{orders.filter(o => o.shiftId === activeShift.id).reduce((s, o) => s + o.total, 0).toFixed(2)} ج</span>
-                </div>
+                {(() => {
+                  const shiftOrders = orders.filter(o => o.shiftId === activeShift.id)
+                  const totalSales = shiftOrders.reduce((s, o) => s + o.total, 0)
+                  const breakdown = {}
+                  shiftOrders.forEach(o => {
+                    const m = o.paymentMethod || 'cash'
+                    breakdown[m] = (breakdown[m] || 0) + o.total
+                  })
+                  return (
+                    <>
+                      <div className="flex justify-between text-sm font-black text-indigo-800 dark:text-indigo-300 border-t border-indigo-200 dark:border-indigo-700 pt-2">
+                        <span>إجمالي المبيعات</span>
+                        <span>{totalSales.toFixed(2)} ج</span>
+                      </div>
+                      {PAYMENT_METHODS.filter(pm => breakdown[pm.id] > 0).map(pm => (
+                        <div key={pm.id} className="flex justify-between text-xs font-bold text-indigo-600 dark:text-indigo-400 pr-2">
+                          <span>{pm.emoji} {pm.label}</span>
+                          <span>{breakdown[pm.id].toFixed(2)} ج</span>
+                        </div>
+                      ))}
+                    </>
+                  )
+                })()}
               </div>
               <div className="mb-4">
                 <label className="block text-sm font-black mb-2 text-slate-700 dark:text-slate-300">المبلغ الفعلي في الدرج الآن</label>
@@ -81,6 +107,7 @@ export default function ShiftsPage() {
         headers={[
           { label: 'الموظف' }, { label: 'البداية' }, { label: 'النهاية' },
           { label: 'العهدة', center: true }, { label: 'المبيعات', center: true },
+          { label: 'توزيع الدفع', center: true },
           { label: 'الدرج الفعلي', center: true }, { label: 'العجز/الزيادة', center: true }, { label: 'الحالة', center: true }
         ]}
         empty={!shifts.length ? 'لا توجد ورديات مسجلة' : null}
@@ -99,6 +126,18 @@ export default function ShiftsPage() {
               <td className="p-4 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">{shift.endTime || '—'}</td>
               <td className="p-4 text-center font-bold">{shift.startingCash} ج</td>
               <td className="p-4 text-center font-black text-indigo-600 dark:text-indigo-400">{shiftSales.toFixed(2)} ج</td>
+              <td className="p-4 text-center">
+                {shift.paymentBreakdown
+                  ? <div className="flex flex-col gap-0.5 items-center text-[11px] font-bold">
+                      {PAYMENT_METHODS.filter(pm => shift.paymentBreakdown[pm.id] > 0).map(pm => (
+                        <span key={pm.id} className="text-slate-600 dark:text-slate-300">
+                          {pm.emoji} {shift.paymentBreakdown[pm.id].toFixed(0)} ج
+                        </span>
+                      ))}
+                    </div>
+                  : <span className="text-slate-400 text-xs">—</span>
+                }
+              </td>
               <td className="p-4 text-center font-bold">{shift.actualCash != null ? `${shift.actualCash} ج` : '—'}</td>
               <td className="p-4 text-center">
                 {variance != null
