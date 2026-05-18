@@ -1,4 +1,5 @@
-import { ClipboardList, Users, Play, Power } from 'lucide-react'
+import { useState } from 'react'
+import { ClipboardList, Users, Play, Power, Loader2 } from 'lucide-react'
 import { useStore } from '../store'
 import { useAuth } from '../hooks/useAuth'
 import { DataTable, Badge, PageHeader } from '../components/UI'
@@ -6,6 +7,7 @@ import { DataTable, Badge, PageHeader } from '../components/UI'
 export default function ShiftsPage() {
   const { shifts, orders, currentUser, openShift, closeShift } = useStore()
   const { logout } = useAuth()
+  const [closing, setClosing] = useState(false)
 
   const activeShift = shifts.find(s => s.status === 'open' && s.cashierName === currentUser?.displayName)
 
@@ -16,10 +18,16 @@ export default function ShiftsPage() {
     e.target.reset()
   }
 
-  const handleCloseShift = (e) => {
+  const handleCloseShift = async (e) => {
     e.preventDefault()
+    if (closing) return
+    setClosing(true)
     const actual = parseFloat(e.target.actualCash.value) || 0
-    closeShift(activeShift.id, actual)
+    try {
+      await closeShift(activeShift.id, actual)
+    } catch {
+      // sync failed but shift is closed locally; logout anyway
+    }
     logout()
   }
 
@@ -59,8 +67,9 @@ export default function ShiftsPage() {
                 <input required name="actualCash" type="number" min="0" step="any" placeholder="0.00"
                   className="w-full p-4 bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-2xl text-center font-black text-2xl focus:outline-none focus:border-rose-500 text-slate-800 dark:text-white" />
               </div>
-              <button type="submit" className="w-full bg-rose-600 hover:bg-rose-700 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg transition-colors">
-                <Power size={18} /> تأكيد التقفيل والخروج
+              <button type="submit" disabled={closing}
+                className="w-full bg-rose-600 hover:bg-rose-700 disabled:opacity-70 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg transition-colors">
+                {closing ? <><Loader2 size={18} className="animate-spin" /> جاري الحفظ...</> : <><Power size={18} /> تأكيد التقفيل والخروج</>}
               </button>
             </form>
           )}

@@ -130,12 +130,12 @@ export const useStore = create((set, get) => ({
       const snap = _buildSnapshot(s)
       saveLocal(cafeId, snap)
 
-      saveCafe(cafeId, buffer)
+      const savePromise = saveCafe(cafeId, buffer)
         .then(() => {
           set({ syncStatus: 'saved' })
           setTimeout(() => set(s => s.syncStatus === 'saved' ? { syncStatus: 'idle' } : {}), 2000)
         })
-        .catch(() => {
+        .catch(() => new Promise((resolve, reject) => {
           setTimeout(() => {
             const retryBuffer = { ...buffer, ...get()._syncBuffer }
             set({ _syncBuffer: {} })
@@ -143,14 +143,16 @@ export const useStore = create((set, get) => ({
               .then(() => {
                 set({ syncStatus: 'saved' })
                 setTimeout(() => set(s => s.syncStatus === 'saved' ? { syncStatus: 'idle' } : {}), 2000)
+                resolve()
               })
               .catch(e => {
                 console.error('Sync failed:', e.code, e.message)
                 set(s => ({ syncStatus: 'error', _syncBuffer: { ...retryBuffer, ...s._syncBuffer } }))
+                reject(e)
               })
           }, 1000)
-        })
-      return
+        }))
+      return savePromise
     }
 
     // debounced
@@ -307,7 +309,7 @@ export const useStore = create((set, get) => ({
       ? { ...s, status: 'closed', endTime: new Date().toLocaleString('ar-EG'), actualCash, totalSales }
       : s)
     set({ shifts: next })
-    get().sync({ shifts: next }, { immediate: true })
+    return get().sync({ shifts: next }, { immediate: true })
   },
 
   // ── Orders / POS ─────────────────────────────────────────
