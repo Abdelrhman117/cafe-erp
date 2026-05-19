@@ -64,12 +64,19 @@ export function useFirestore() {
       // This covers the all-day offline scenario: one authoritative write at reconnect
       // overwrites any intermediate queued writes with the definitive final state.
       const s = useStore.getState()
-      useStore.getState().sync({
+      // Never overwrite server table orders with an empty local state —
+      // if ATO is empty it may mean the device just started before Firestore loaded.
+      // holdTable and placeOrder already sync ATO immediately, so skip it here when empty.
+      const syncPayload = {
         products: s.products, rawMaterials: s.rawMaterials, employees: s.employees,
         expenses: s.expenses, tables: s.tables, shifts: s.shifts, orders: s.orders,
-        activeTableOrders: s.activeTableOrders, offers: s.offers, psDevices: s.psDevices,
+        offers: s.offers, psDevices: s.psDevices,
         psSessions: s.psSessions, isTaxEnabled: s.isTaxEnabled, isServiceEnabled: s.isServiceEnabled
-      }, { immediate: true })
+      }
+      if (Object.keys(s.activeTableOrders || {}).length > 0) {
+        syncPayload.activeTableOrders = s.activeTableOrders
+      }
+      useStore.getState().sync(syncPayload, { immediate: true })
       setTimeout(() => { reconnectSyncing = false }, 5000)
     }
     const handleOffline = () => setIsOnline(false)

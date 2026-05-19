@@ -82,9 +82,14 @@ export const useStore = create((set, get) => ({
       Object.entries(pending).filter(([, ts]) => now - ts < PENDING_DELETES_TTL)
     )
     savePendingDeletes(activePending)
-    const rawATO  = data.activeTableOrders || {}
-    const safeATO = Object.fromEntries(
-      Object.entries(rawATO).filter(([id]) => !activePending[id])
+
+    // Merge server + local ATO: server wins for conflicts, but keep local-only tables
+    // (protects offline-added tables that haven't reached the server yet)
+    const serverATO = data.activeTableOrders || {}
+    const localATO  = get().activeTableOrders || {}
+    const mergedATO = { ...localATO, ...serverATO }
+    const safeATO   = Object.fromEntries(
+      Object.entries(mergedATO).filter(([id]) => !activePending[id])
     )
     set({
       products:             data.products?.length     ? data.products      : DEFAULT_PRODUCTS,
@@ -382,13 +387,21 @@ export const useStore = create((set, get) => ({
 
   holdTable: (tableId, cart, note = '') => {
     const next = { ...get().activeTableOrders, [tableId]: { items: cart, note } }
-    set({ activeTableOrders: next })
+    // Remove from pending deletes so re-opened tables aren't invisible after sync
+    const pending = { ...get()._pendingTableDeletes }
+    delete pending[tableId]
+    savePendingDeletes(pending)
+    set({ activeTableOrders: next, _pendingTableDeletes: pending })
     get().sync({ activeTableOrders: next }, { immediate: true })
   },
 
   clearAllTableOrders: () => {
-    set({ activeTableOrders: {} })
-    get().sync({ activeTableOrders: {} }, { immediate: true })
+    const monthlyIds = new Set(get().tables.filter(t => t.billingType === 'monthly').map(t => t.id))
+    const next = Object.fromEntries(
+      Object.entries(get().activeTableOrders).filter(([id]) => monthlyIds.has(id))
+    )
+    set({ activeTableOrders: next })
+    get().sync({ activeTableOrders: next }, { immediate: true })
   },
 
   // ── PlayStation ───────────────────────────────────────────
