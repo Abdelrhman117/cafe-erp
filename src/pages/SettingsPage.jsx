@@ -77,7 +77,7 @@ function resizeImage(base64, maxSize = 256) {
 }
 
 export default function SettingsPage() {
-  const { platform, savePlatformField, currentUser, clearAllTableOrders, activeTableOrders } = useStore()
+  const { platform, savePlatformField, currentUser, clearAllTableOrders, activeTableOrders, tables } = useStore()
   const { canInstall, install, isInstalled, isIOS }  = usePWA()
 
   const [appName,    setAppName]    = useState(platform?.appName    || '')
@@ -235,12 +235,16 @@ export default function SettingsPage() {
       </form>
 
       {/* ── Danger Zone: Clear Stuck Tables ──────────────── */}
-      {currentUser?.role === 'admin' && (
-        <ClearTablesSection
-          count={Object.keys(activeTableOrders).length}
-          onConfirm={clearAllTableOrders}
-        />
-      )}
+      {currentUser?.role === 'admin' && (() => {
+        const monthlyIds = new Set(tables.filter(t => t.billingType === 'monthly').map(t => t.id))
+        const regularCount = Object.keys(activeTableOrders).filter(id => !monthlyIds.has(id)).length
+        return (
+          <ClearTablesSection
+            count={regularCount}
+            onConfirm={clearAllTableOrders}
+          />
+        )
+      })()}
 
       {/* ── PWA Install Section ───────────────────────────── */}
       <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 p-6 shadow-sm space-y-4">

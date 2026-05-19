@@ -396,8 +396,12 @@ export const useStore = create((set, get) => ({
   },
 
   clearAllTableOrders: () => {
-    set({ activeTableOrders: {} })
-    get().sync({ activeTableOrders: {} }, { immediate: true })
+    const monthlyIds = new Set(get().tables.filter(t => t.billingType === 'monthly').map(t => t.id))
+    const next = Object.fromEntries(
+      Object.entries(get().activeTableOrders).filter(([id]) => monthlyIds.has(id))
+    )
+    set({ activeTableOrders: next })
+    get().sync({ activeTableOrders: next }, { immediate: true })
   },
 
   // ── PlayStation ───────────────────────────────────────────

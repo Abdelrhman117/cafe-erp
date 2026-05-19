@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   ShoppingCart, Plus, Minus, X, Banknote, Save, Package, Coffee,
   Armchair, Receipt, Gamepad2, Tag, Play, Power, Clock, Gift,
-  Scissors, Printer, ArrowRightLeft, CheckCircle
+  Scissors, Printer, ArrowRightLeft, CheckCircle, CalendarDays
 } from 'lucide-react'
 import { useStore } from '../store'
 import { printReceipt, printBaristaTicket } from '../lib/pdf'
@@ -996,17 +996,23 @@ export default function POSPage() {
             {tables.map(t => {
               const savedTable = activeTableOrders[t.id]
               const tableItems = Array.isArray(savedTable) ? savedTable : (savedTable?.items || [])
-              const occ = tableItems.length > 0
+              const occ        = tableItems.length > 0
+              const isMonthly  = t.billingType === 'monthly'
               return (
                 <button key={t.id} onClick={() => selectTable(t)}
                   className={`p-3 rounded-2xl border-2 flex flex-col items-center gap-1.5 transition-all text-sm
-                    ${occ
-                      ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700'
-                      : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 hover:border-indigo-400 text-slate-700 dark:text-slate-300'}`}>
-                  <Armchair className="w-6 h-6" />
+                    ${isMonthly
+                      ? occ
+                        ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300'
+                        : 'border-indigo-200 bg-white dark:border-indigo-800 dark:bg-slate-800 hover:border-indigo-500 text-indigo-500 dark:text-indigo-400'
+                      : occ
+                        ? 'border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700'
+                        : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800 hover:border-indigo-400 text-slate-700 dark:text-slate-300'
+                    }`}>
+                  {isMonthly ? <CalendarDays className="w-6 h-6" /> : <Armchair className="w-6 h-6" />}
                   <span className="font-black text-xs line-clamp-1">{t.name}</span>
                   {occ && (
-                    <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded-full font-bold">
+                    <span className={`text-[9px] text-white px-1.5 py-0.5 rounded-full font-bold ${isMonthly ? 'bg-indigo-500' : 'bg-amber-500'}`}>
                       {tableItems.length} صنف
                     </span>
                   )}
