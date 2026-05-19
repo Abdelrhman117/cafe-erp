@@ -6,6 +6,13 @@ import { PeriodTabs, DataTable, Badge } from '../components/UI'
 
 const PERIOD_LABELS = { daily:'يومي', weekly:'أسبوعي', monthly:'شهري', quarterly:'ربع سنوي', semi:'نصف سنوي', yearly:'سنوي', all:'كامل' }
 
+const PAYMENT_METHODS = [
+  { id: 'cash',     label: 'كاش',        emoji: '💵', color: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400' },
+  { id: 'visa',     label: 'فيزا',        emoji: '💳', color: 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400' },
+  { id: 'instapay', label: 'إنستا باي',   emoji: '📲', color: 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400' },
+  { id: 'vodafone', label: 'فودافون كاش', emoji: '📱', color: 'bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400' },
+]
+
 export default function ReportsPage() {
   const [period, setPeriod] = useState('daily')
   const { currentUser } = useStore()
@@ -54,6 +61,19 @@ export default function ReportsPage() {
           </div>
         </div>
 
+        {/* توزيع طرق الدفع */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {PAYMENT_METHODS.map(pm => {
+            const amount = metrics.paymentBreakdown?.[pm.id] || 0
+            return (
+              <div key={pm.id} className={`p-3 rounded-2xl text-center ${pm.color}`}>
+                <p className="text-lg font-black">{pm.emoji} {amount.toFixed(2)} ج</p>
+                <p className="text-xs font-bold mt-0.5 opacity-80">{pm.label}</p>
+              </div>
+            )
+          })}
+        </div>
+
         <button onClick={handleExport} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg text-base transition-colors">
           <Download size={20} /> تصدير PDF — {PERIOD_LABELS[period]}
         </button>
@@ -63,7 +83,7 @@ export default function ReportsPage() {
       <DataTable
         headers={[
           { label: 'التاريخ' }, { label: 'الكاشير' }, { label: 'النوع' },
-          { label: 'الأصناف' }, { label: 'الخصم', center: true }, { label: 'الإجمالي', center: true }
+          { label: 'الأصناف' }, { label: 'الدفع', center: true }, { label: 'الخصم', center: true }, { label: 'الإجمالي', center: true }
         ]}
         empty={metrics.orders.length === 0 ? 'لا توجد معاملات في هذه الفترة' : null}
       >
@@ -73,6 +93,12 @@ export default function ReportsPage() {
             <td className="p-4 font-bold text-slate-700 dark:text-slate-300 text-xs">{o.cashierName || '—'}</td>
             <td className="p-4"><Badge color="indigo">{o.note || 'تيك أواي'}</Badge></td>
             <td className="p-4 text-xs text-slate-600 dark:text-slate-400 max-w-[200px] truncate">{(o.items || []).map(i => i.name).join('، ')}</td>
+            <td className="p-4 text-center">
+              {(() => {
+                const pm = PAYMENT_METHODS.find(p => p.id === (o.paymentMethod || 'cash'))
+                return <span className="text-xs font-black">{pm?.emoji} {pm?.label}</span>
+              })()}
+            </td>
             <td className="p-4 text-center text-xs font-bold text-emerald-600">{o.discountAmount > 0 ? `-${o.discountAmount.toFixed(2)} ج` : '—'}</td>
             <td className="p-4 text-center font-black text-indigo-600 dark:text-indigo-400">{o.total.toFixed(2)} ج</td>
           </tr>

@@ -305,8 +305,13 @@ export const useStore = create((set, get) => ({
     const { shifts, orders } = get()
     const shiftOrders = orders.filter(o => o.shiftId === shiftId)
     const totalSales  = shiftOrders.reduce((s, o) => s + o.total, 0)
+    const paymentBreakdown = {}
+    shiftOrders.forEach(o => {
+      const m = o.paymentMethod || 'cash'
+      paymentBreakdown[m] = (paymentBreakdown[m] || 0) + o.total
+    })
     const next = shifts.map(s => s.id === shiftId
-      ? { ...s, status: 'closed', endTime: new Date().toLocaleString('ar-EG'), actualCash, totalSales }
+      ? { ...s, status: 'closed', endTime: new Date().toLocaleString('ar-EG'), actualCash, totalSales, paymentBreakdown }
       : s)
     set({ shifts: next })
     return get().sync({ shifts: next }, { immediate: true })
@@ -320,7 +325,7 @@ export const useStore = create((set, get) => ({
     } = get()
     const {
       orderType, tableId, shiftId, cashierName,
-      discountType, discountValue, tableName, note
+      discountType, discountValue, tableName, note, paymentMethod
     } = options
 
     const subtotal = cart.reduce((s, i) => s + i.price * i.quantity, 0)
@@ -356,6 +361,7 @@ export const useStore = create((set, get) => ({
       serviceCharge, tax, total, shiftId, cashierName,
       note: orderType === 'takeaway' ? 'تيك أواي' : `صالة — ${tableName}`,
       orderNote: note || '',
+      paymentMethod: paymentMethod || 'cash',
       date: new Date().toLocaleString('ar-EG'),
       timestamp: Date.now()
     }
@@ -581,10 +587,16 @@ export const selectFinancials = (period) => (state) => {
       if (mat) cogs += r.amount * item.quantity * mat.costPerUnit
     })
   }))
+  const paymentBreakdown = {}
+  orders.forEach(o => {
+    const m = o.paymentMethod || 'cash'
+    paymentBreakdown[m] = (paymentBreakdown[m] || 0) + o.total
+  })
   return {
     revenue, expenses: expTotal, cogs,
     profit: revenue - expTotal - cogs,
-    orders, ordersCount: orders.length
+    orders, ordersCount: orders.length,
+    paymentBreakdown,
   }
 }
 

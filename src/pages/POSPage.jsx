@@ -33,6 +33,13 @@ function makeCartKey(productId, selectedOpts = {}) {
 
 const SPLIT_COLORS = ['#4f46e5','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#ec4899']
 
+const PAYMENT_METHODS = [
+  { id: 'cash',     label: 'كاش',        emoji: '💵' },
+  { id: 'visa',     label: 'فيزا',        emoji: '💳' },
+  { id: 'instapay', label: 'إنستا باي',   emoji: '📲' },
+  { id: 'vodafone', label: 'فودافون كاش', emoji: '📱' },
+]
+
 // ─── Sub-components ────────────────────────────────────────
 function ProductCard({ product, offers, onAdd }) {
   const offerPrice = useMemo(() => getOfferPrice(product, offers), [product, offers])
@@ -404,7 +411,7 @@ function CartPanel({
   setSplitCount, setSplitOpen,
   incItem, decItem, setCart, setActiveTable,
   setCartOpen, orderNote, setOrderNote, updateItemNote,
-  pendingPrint,
+  pendingPrint, paymentMethod, setPaymentMethod,
 }) {
   const isDineIn = mode === 'dine_in' && activeTable
 
@@ -528,6 +535,24 @@ function CartPanel({
           </div>
         </div>
 
+        {/* طريقة الدفع */}
+        {cart.length > 0 && (
+          <div className="mb-3">
+            <p className="text-[11px] font-black text-slate-400 mb-1.5">طريقة الدفع</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {PAYMENT_METHODS.map(pm => (
+                <button key={pm.id} onClick={() => setPaymentMethod(pm.id)}
+                  className={`py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1 transition-all border-2 ${
+                    paymentMethod === pm.id
+                      ? 'border-indigo-500 bg-indigo-600 text-white shadow'
+                      : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:border-indigo-300'
+                  }`}>
+                  {pm.emoji} {pm.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {isDineIn ? (
           // ── وضع الصالة: 4 أزرار ─────────────────────────
           <div className="space-y-2">
@@ -764,6 +789,7 @@ export default function POSPage() {
   const [splitOpen,     setSplitOpen]     = useState(false)
   const [splitCount,    setSplitCount]    = useState(2)
   const [lowStockAlert, setLowStockAlert] = useState([])
+  const [paymentMethod, setPaymentMethod] = useState('cash')
 
   const isAdmin       = currentUser?.role === 'admin'
   const isDineIn      = mode === 'dine_in' && activeTable
@@ -887,6 +913,7 @@ export default function POSPage() {
       discountType,
       discountValue: discountAmount > 0 ? dv : 0,
       note:          orderNote,
+      paymentMethod,
     })
 
     if (isDineIn) {
@@ -902,7 +929,7 @@ export default function POSPage() {
     }
 
     setCart([]); setActiveTable(null); setDiscountVal('')
-    setOrderNote(''); setCartOpen(false); setPendingPrint(false)
+    setOrderNote(''); setCartOpen(false); setPendingPrint(false); setPaymentMethod('cash')
     if (order.lowStockWarnings?.length > 0) setLowStockAlert(order.lowStockWarnings)
   }
 
@@ -929,7 +956,7 @@ export default function POSPage() {
     setSplitCount, setSplitOpen,
     incItem, decItem, setCart, setActiveTable,
     setCartOpen, orderNote, setOrderNote, updateItemNote,
-    pendingPrint,
+    pendingPrint, paymentMethod, setPaymentMethod,
   }
 
   const TABS = [
@@ -1110,9 +1137,10 @@ export default function POSPage() {
               discountType,
               discountValue: discountAmount > 0 ? dv : 0,
               note:          orderNote,
+              paymentMethod,
             })
             setCart([]); setActiveTable(null); setDiscountVal('')
-            setOrderNote(''); setSplitOpen(false); setCartOpen(false)
+            setOrderNote(''); setSplitOpen(false); setCartOpen(false); setPaymentMethod('cash')
             if (order.lowStockWarnings?.length > 0) setLowStockAlert(order.lowStockWarnings)
             setLastOrder(order)
           }}
