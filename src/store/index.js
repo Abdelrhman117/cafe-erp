@@ -83,13 +83,30 @@ export const useStore = create((set, get) => ({
     )
     savePendingDeletes(activePending)
 
-    // Merge server + local ATO: server wins for conflicts, but keep local-only tables
-    // (protects offline-added tables that haven't reached the server yet)
-    const serverATO = data.activeTableOrders || {}
-    const localATO  = get().activeTableOrders || {}
-    const mergedATO = { ...localATO, ...serverATO }
-    const safeATO   = Object.fromEntries(
-      Object.entries(mergedATO).filter(([id]) => !activePending[id])
+    const serverATO    = data.activeTableOrders || {}
+    const localATO     = get().activeTableOrders || {}
+    const serverTables = data.tables || get().tables || []
+
+    // Monthly tables: local wins — month-long sessions must survive any server overwrite.
+    // Regular tables: server wins — single-session tables are authoritative from server.
+    // In both cases, pendingTableDeletes entries are filtered out (recently paid).
+    const allIds    = new Set([...Object.keys(localATO), ...Object.keys(serverATO)])
+    const mergedATO = {}
+    allIds.forEach(id => {
+      const table = serverTables.find(t => t.id === id)
+      if (table?.billingType === 'monthly') {
+        // Keep whichever has more items, or local if server is empty/absent
+        const localEntry  = localATO[id]
+        const serverEntry = serverATO[id]
+        const localItems  = Array.isArray(localEntry) ? localEntry : (localEntry?.items || [])
+        const serverItems = Array.isArray(serverEntry) ? serverEntry : (serverEntry?.items || [])
+        mergedATO[id] = localItems.length >= serverItems.length ? (localEntry || serverEntry) : serverEntry
+      } else {
+        mergedATO[id] = serverATO[id] ?? localATO[id]
+      }
+    })
+    const safeATO = Object.fromEntries(
+      Object.entries(mergedATO).filter(([id, v]) => v !== undefined && !activePending[id])
     )
     set({
       products:             data.products?.length     ? data.products      : DEFAULT_PRODUCTS,
@@ -262,9 +279,11 @@ export const useStore = create((set, get) => ({
     get().sync({ tables: next })
   },
   deleteTable: (id) => {
-    const next = get().tables.filter(t => t.id !== id)
-    set({ tables: next })
-    get().sync({ tables: next })
+    const next   = get().tables.filter(t => t.id !== id)
+    const newATO = { ...get().activeTableOrders }
+    delete newATO[id]
+    set({ tables: next, activeTableOrders: newATO })
+    get().sync({ tables: next, activeTableOrders: newATO })
   },
 
   // ── Offers ────────────────────────────────────────────────
@@ -372,13 +391,21 @@ export const useStore = create((set, get) => ({
     }
 
     const newOrders = [...orders, order]
-    let newATO = { ...activeTableOrders }
-    if (tableId) delete newATO[tableId]
+    let newATO     = { ...activeTableOrders }
+    let newPending = { ...get()._pendingTableDeletes }
 
-    const newPending = tableId
-      ? { ...get()._pendingTableDeletes, [tableId]: Date.now() }
-      : get()._pendingTableDeletes
-    if (tableId) savePendingDeletes(newPending)
+    if (tableId) {
+      const table = get().tables.find(t => t.id === tableId)
+      if (table?.billingType === 'monthly') {
+        // Monthly tables stay reserved all month — clear items but keep the entry
+        newATO[tableId] = { items: [], note: '', heldForMonth: true }
+        // No pendingDeletes entry — monthly tables are never "freed" by paying
+      } else {
+        delete newATO[tableId]
+        newPending = { ...newPending, [tableId]: Date.now() }
+        savePendingDeletes(newPending)
+      }
+    }
 
     set({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO, _pendingTableDeletes: newPending })
     get().sync({ orders: newOrders, rawMaterials: newMaterials, activeTableOrders: newATO }, { immediate: true })
@@ -386,7 +413,12 @@ export const useStore = create((set, get) => ({
   },
 
   holdTable: (tableId, cart, note = '') => {
-    const next = { ...get().activeTableOrders, [tableId]: { items: cart, note } }
+    const table     = get().tables.find(t => t.id === tableId)
+    const isMonthly = table?.billingType === 'monthly'
+    const entry     = isMonthly
+      ? { items: cart, note, heldForMonth: true }
+      : { items: cart, note }
+    const next = { ...get().activeTableOrders, [tableId]: entry }
     // Remove from pending deletes so re-opened tables aren't invisible after sync
     const pending = { ...get()._pendingTableDeletes }
     delete pending[tableId]

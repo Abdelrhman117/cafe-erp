@@ -217,7 +217,7 @@ function PsTransferModal({ session, device, onTransfer, onClose }) {
                       ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400'
                       : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-indigo-300'}`}
                 >
-                  <Armchair size={18} />
+                  {t.billingType === 'monthly' ? <CalendarDays size={18} /> : <Armchair size={18} />}
                   {t.name}
                 </button>
               ))}
@@ -994,10 +994,11 @@ export default function POSPage() {
         {mode === 'dine_in' && !activeTable && (
           <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
             {tables.map(t => {
-              const savedTable = activeTableOrders[t.id]
-              const tableItems = Array.isArray(savedTable) ? savedTable : (savedTable?.items || [])
-              const occ        = tableItems.length > 0
-              const isMonthly  = t.billingType === 'monthly'
+              const savedTable  = activeTableOrders[t.id]
+              const tableItems  = Array.isArray(savedTable) ? savedTable : (savedTable?.items || [])
+              const isMonthly   = t.billingType === 'monthly'
+              const isReserved  = isMonthly && savedTable?.heldForMonth === true
+              const occ         = tableItems.length > 0 || isReserved
               return (
                 <button key={t.id} onClick={() => selectTable(t)}
                   className={`p-3 rounded-2xl border-2 flex flex-col items-center gap-1.5 transition-all text-sm
@@ -1013,7 +1014,7 @@ export default function POSPage() {
                   <span className="font-black text-xs line-clamp-1">{t.name}</span>
                   {occ && (
                     <span className={`text-[9px] text-white px-1.5 py-0.5 rounded-full font-bold ${isMonthly ? 'bg-indigo-500' : 'bg-amber-500'}`}>
-                      {tableItems.length} صنف
+                      {tableItems.length > 0 ? `${tableItems.length} صنف` : 'محجوز'}
                     </span>
                   )}
                 </button>
