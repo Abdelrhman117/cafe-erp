@@ -5,6 +5,51 @@ import { useStore } from '../store'
 import { usePWA } from '../hooks/usePWA'
 import { Btn, Input } from '../components/UI'
 
+// ── Clear Tables with typed confirmation ─────────────────────
+function ClearTablesSection({ count, onConfirm }) {
+  const [input, setInput] = useState('')
+  const CONFIRM_WORD = 'مسح'
+  if (count === 0) return (
+    <div className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 p-6 shadow-sm">
+      <h3 className="font-black text-lg text-slate-500 flex items-center gap-2">
+        <Trash2 size={18} /> مسح بيانات الطاولات العالقة
+      </h3>
+      <p className="text-sm font-bold text-slate-400 mt-2">لا توجد طاولات بها طلبات معلقة حالياً.</p>
+    </div>
+  )
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-3xl border-2 border-rose-300 dark:border-rose-800 p-6 shadow-sm space-y-4">
+      <h3 className="font-black text-lg text-rose-600 dark:text-rose-400 flex items-center gap-2">
+        <Trash2 size={18} /> مسح بيانات الطاولات العالقة
+      </h3>
+      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-2xl p-4">
+        <p className="text-sm font-black text-amber-800 dark:text-amber-400">
+          ⚠️ تحذير: هذا الإجراء سيمسح بيانات {count} طاولة نهائياً ولا يمكن التراجع عنه.
+        </p>
+        <p className="text-xs font-bold text-amber-700 dark:text-amber-500 mt-1">
+          استخدم هذا فقط إذا ظهرت طاولات محجوزة بعد الدفع بشكل خاطئ.
+        </p>
+      </div>
+      <div>
+        <label className="block text-sm font-black text-slate-700 dark:text-slate-300 mb-2">
+          اكتب كلمة <span className="text-rose-600 font-black">"{CONFIRM_WORD}"</span> للتأكيد:
+        </label>
+        <input
+          value={input} onChange={e => setInput(e.target.value)}
+          placeholder={CONFIRM_WORD}
+          className="w-full p-3 bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 rounded-xl font-black text-center text-lg outline-none focus:border-rose-400"
+        />
+      </div>
+      <button
+        disabled={input !== CONFIRM_WORD}
+        onClick={() => { onConfirm(); setInput('') }}
+        className="w-full py-3.5 rounded-2xl font-black text-sm text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
+        <Trash2 size={16} /> مسح {count} طاولة نهائياً
+      </button>
+    </div>
+  )
+}
+
 // ── Convert image file to base64 ──────────────────────────
 function fileToBase64(file) {
   return new Promise((res, rej) => {
@@ -191,26 +236,10 @@ export default function SettingsPage() {
 
       {/* ── Danger Zone: Clear Stuck Tables ──────────────── */}
       {currentUser?.role === 'admin' && (
-        <div className="bg-white dark:bg-slate-800 rounded-3xl border border-rose-200 dark:border-rose-900 p-6 shadow-sm space-y-4">
-          <h3 className="font-black text-lg text-rose-600 dark:text-rose-400 flex items-center gap-2">
-            <Trash2 size={18} /> مسح بيانات الطاولات العالقة
-          </h3>
-          <p className="text-sm font-bold text-slate-600 dark:text-slate-400">
-            إذا ظهرت طاولات محجوزة بعد الدفع، اضغط هنا لمسح جميع الطلبات المعلقة على الطاولات وإعادتها لحالة "فاضية".
-          </p>
-          <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-900 rounded-xl">
-            <span className="text-sm font-bold text-slate-500">طاولات عليها طلبات معلقة:</span>
-            <span className="font-black text-rose-600 text-lg">{Object.keys(activeTableOrders).length}</span>
-          </div>
-          <button
-            onClick={() => {
-              if (!window.confirm('مسح جميع الطلبات المعلقة على الطاولات؟')) return
-              clearAllTableOrders()
-            }}
-            className="w-full py-3.5 rounded-2xl font-black text-sm text-white bg-rose-600 hover:bg-rose-700 transition-colors flex items-center justify-center gap-2">
-            <Trash2 size={16} /> مسح كل الطاولات العالقة
-          </button>
-        </div>
+        <ClearTablesSection
+          count={Object.keys(activeTableOrders).length}
+          onConfirm={clearAllTableOrders}
+        />
       )}
 
       {/* ── PWA Install Section ───────────────────────────── */}
